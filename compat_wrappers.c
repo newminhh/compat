@@ -493,8 +493,20 @@ static int format_from_cdecl_words(FILE *fp, char *dst, size_t dst_sz, int to_fi
                         else if (dyn_w) snprintf(dyn, (size_t)n + 1, spec_buf, w_val, s);
                         else if (dyn_p) snprintf(dyn, (size_t)n + 1, spec_buf, p_val, s);
                         else snprintf(dyn, (size_t)n + 1, spec_buf, s);
-                        EMIT_STR(dyn, (size_t)n);
+                        int emit_err = 0;
+                        for (size_t _i = 0; _i < (size_t)n; _i++) {
+                            if (to_file) {
+                                if (fputc((unsigned char)dyn[_i], fp) == EOF) {
+                                    emit_err = 1;
+                                    break;
+                                }
+                            } else if (dst && out_pos + 1 < dst_sz) {
+                                dst[out_pos++] = dyn[_i];
+                            }
+                            total_chars++;
+                        }
                         free(dyn);
+                        if (emit_err) return -1;
                     }
                 }
             }

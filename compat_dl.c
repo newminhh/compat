@@ -159,7 +159,11 @@ void *compat_dlopen(const char *filename, int flags) {
             set_dlerror("dlopen(NULL) failed: %s", e ? e : "unknown error");
             return NULL;
         }
-        return register_handle(NM_DL_PATCHED_X32, rh, "<main>", cdecl_mode);
+        void *h = register_handle(NM_DL_PATCHED_X32, rh, "<main>", cdecl_mode);
+        if (!h) {
+            dlclose(rh);
+        }
+        return h;
     }
 
     if (filename[0] == '\0') {
@@ -176,7 +180,11 @@ void *compat_dlopen(const char *filename, int flags) {
                         filename, canon, e ? e : "unknown error");
             return NULL;
         }
-        return register_handle(NM_DL_NATIVE_WRAPPED, rh, canon, cdecl_mode);
+        void *h = register_handle(NM_DL_NATIVE_WRAPPED, rh, canon, cdecl_mode);
+        if (!h) {
+            dlclose(rh);
+        }
+        return h;
     }
 
     /* Check if this is an unpatched i386 ELF32 .so */
@@ -199,7 +207,11 @@ void *compat_dlopen(const char *filename, int flags) {
             set_dlerror("compat_dlopen(%s) DBT failed: %s", filename, e ? e : "unknown");
             return NULL;
         }
-        return register_handle(NM_DL_GUEST_DBT, gh, filename, cdecl_mode);
+        void *h = register_handle(NM_DL_GUEST_DBT, gh, filename, cdecl_mode);
+        if (!h && backend.dlclose_fn) {
+            backend.dlclose_fn(gh);
+        }
+        return h;
     }
 
     /* Native or statically patched x32 .so */
@@ -210,7 +222,11 @@ void *compat_dlopen(const char *filename, int flags) {
         set_dlerror("compat_dlopen(%s) failed: %s", filename, e ? e : "cannot open shared object file");
         return NULL;
     }
-    return register_handle(NM_DL_PATCHED_X32, rh, filename, cdecl_mode);
+    void *h = register_handle(NM_DL_PATCHED_X32, rh, filename, cdecl_mode);
+    if (!h) {
+        dlclose(rh);
+    }
+    return h;
 }
 
 static void *dlsym_internal(void *handle, const char *symbol, int force_cdecl) {

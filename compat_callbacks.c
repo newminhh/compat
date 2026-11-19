@@ -351,12 +351,31 @@ void *newminhh_alloc_cb_trampoline(uint32_t guest_fn_va,
         NM_LOG_ERROR("callbacks", "alloc_cb_trampoline: NULL guest_fn_va");
         return NULL;
     }
+    nm_fn_sig_t resolved_sig;
+    if (sig) {
+        resolved_sig = *sig;
+    } else {
+        memset(&resolved_sig, 0, sizeof(resolved_sig));
+        resolved_sig.ret_kind = NM_RET_U32;
+        flags |= NM_CB_FLAG_UNTYPED;
+    }
     pthread_mutex_lock(&g_pool_lock);
     if (!g_cb_pool_page) {
         g_cb_pool_page = alloc_exec_pool_pages(NM_CB_POOL_CAP, (uintptr_t)newminhh_cb_common);
         if (!g_cb_pool_page) {
             pthread_mutex_unlock(&g_pool_lock);
             return NULL;
+        }
+    }
+    for (uint32_t i = 0; i < g_cb_pool_next; i++) {
+        if (g_cb_slots[i].in_use &&
+            g_cb_slots[i].guest_fn_va == guest_fn_va &&
+            g_cb_slots[i].mode == mode &&
+            g_cb_slots[i].flags == flags &&
+            memcmp(&g_cb_slots[i].sig, &resolved_sig, sizeof(nm_fn_sig_t)) == 0) {
+            void *addr = g_cb_pool_page + (size_t)i * 16u;
+            pthread_mutex_unlock(&g_pool_lock);
+            return addr;
         }
     }
     if (g_cb_pool_next >= NM_CB_POOL_CAP) {
@@ -366,13 +385,7 @@ void *newminhh_alloc_cb_trampoline(uint32_t guest_fn_va,
     }
     uint32_t id = g_cb_pool_next++;
     g_cb_slots[id].guest_fn_va = guest_fn_va;
-    if (sig) {
-        g_cb_slots[id].sig = *sig;
-    } else {
-        memset(&g_cb_slots[id].sig, 0, sizeof(nm_fn_sig_t));
-        g_cb_slots[id].sig.ret_kind = NM_RET_U32;
-        flags |= NM_CB_FLAG_UNTYPED;
-    }
+    g_cb_slots[id].sig = resolved_sig;
     g_cb_slots[id].mode = mode;
     g_cb_slots[id].flags = flags;
     g_cb_slots[id].in_use = 1;
@@ -392,6 +405,16 @@ void *newminhh_alloc_out_trampoline_ex(void *target_x32_fn, const nm_fn_sig_t *s
         if (!g_out_pool_page) {
             pthread_mutex_unlock(&g_pool_lock);
             return NULL;
+        }
+    }
+    for (uint32_t i = 0; i < g_out_pool_next; i++) {
+        if (g_out_slots[i].in_use &&
+            g_out_slots[i].target_x32_fn == target_x32_fn &&
+            g_out_slots[i].flags == flags &&
+            memcmp(&g_out_slots[i].sig, sig, sizeof(nm_fn_sig_t)) == 0) {
+            void *addr = g_out_pool_page + (size_t)i * 16u;
+            pthread_mutex_unlock(&g_pool_lock);
+            return addr;
         }
     }
     if (g_out_pool_next >= NM_OUT_POOL_CAP) {
@@ -535,7 +558,7 @@ int compat_pthread_create(uint32_t *thread_out, const void *attr,
     if (!ctx) {
         return ENOMEM;
     }
-    unsigned long cur_gs = 0;
+    uint64_t cur_gs = 0;
     if (syscall(__NR_arch_prctl, ARCH_GET_GS, &cur_gs) != 0) {
         cur_gs = 0;
     }

@@ -1,0 +1,40 @@
+name: Build compat (x32)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-x32:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout newminhh/compat
+        uses: actions/checkout@v4
+        with:
+          path: compat
+
+      - name: Pull shared headers from newminhh/common
+        uses: actions/checkout@v4
+        with:
+          repository: newminhh/common
+          path: common
+
+      - name: Install x32 toolchain (gcc-multilib & binutils)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-multilib binutils file
+
+      - name: Build libnewminhh_compat.so (x32)
+        run: |
+          make -C compat CC="gcc -mx32" all
+          file compat/libnewminhh_compat.so
+          readelf -h compat/libnewminhh_compat.so | grep -E "Class:|Machine:"
+
+      - name: Upload libnewminhh_compat.so artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libnewminhh_compat-x32
+          path: compat/libnewminhh_compat.so

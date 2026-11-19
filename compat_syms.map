@@ -1,0 +1,7 @@
+NEWMINHH_COMPAT_1.0 {
+    global:
+        newminhh_*;
+        compat_*;
+    local:
+        *;
+};

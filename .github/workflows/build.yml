@@ -7,6 +7,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-x32:
     runs-on: ubuntu-latest
@@ -32,6 +35,7 @@ jobs:
           make -C compat CC="gcc -mx32" all
           file compat/libnewminhh_compat.so
           readelf -h compat/libnewminhh_compat.so | grep -E "Class:|Machine:"
+          ! readelf -W -l compat/libnewminhh_compat.so | grep "GNU_STACK" | grep -q "RWE"
 
       - name: Upload libnewminhh_compat.so artifact
         uses: actions/upload-artifact@v4

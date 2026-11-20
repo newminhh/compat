@@ -1,7 +1,7 @@
 CC := gcc
 CFLAGS := -fPIC -O2 -Wall -Wextra -Werror=implicit-function-declaration -I../common
 ASFLAGS := -fPIC -I../common
-LDFLAGS := -shared -Wl,--version-script=compat_syms.map -Wl,-soname,libnewminhh_compat.so
+LDFLAGS := -shared -Wl,--version-script=compat_syms.map -Wl,-soname,libnewminhh_compat.so -Wl,-z,noexecstack -Wl,-z,relro -Wl,-z,now
 LIBS := -ldl -lpthread -lm
 
 PREFIX ?= /usr/local

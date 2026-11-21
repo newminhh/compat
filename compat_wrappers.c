@@ -261,9 +261,17 @@ void *compat_aligned_alloc(uint32_t alignment, uint32_t size) {
         errno = EINVAL;
         return nullptr;
     }
-    size_t alloc_sz = (size % alignment == 0) ? (size_t)size : (((size_t)size + alignment - 1) & ~((size_t)alignment - 1));
-    if (alloc_sz == 0) alloc_sz = alignment;
-    return aligned_alloc((size_t)alignment, alloc_sz);
+    uint32_t alloc_sz = size;
+    if (alloc_sz == 0) {
+        alloc_sz = alignment;
+    } else if (alloc_sz % alignment != 0) {
+        if (ckd_add(&alloc_sz, alloc_sz, alignment - 1)) {
+            errno = ENOMEM;
+            return nullptr;
+        }
+        alloc_sz &= ~(alignment - 1);
+    }
+    return aligned_alloc((size_t)alignment, (size_t)alloc_sz);
 }
 
 void compat_free_sized(void *p, [[maybe_unused]] uint32_t sz) {
@@ -298,14 +306,14 @@ char *compat_strndup(const char *s, uint32_t n) {
 }
 
 void *compat_memchr(const void *s, int c, uint32_t n) {
-    if (s == nullptr && n > 0) {
+    if (s == nullptr || n == 0) {
         return nullptr;
     }
     return (void *)(uintptr_t)memchr(s, c, (size_t)n);
 }
 
 void *compat_memccpy(void *dst, const void *src, int c, uint32_t n) {
-    if (dst == nullptr || src == nullptr) {
+    if (dst == nullptr || src == nullptr || n == 0) {
         return nullptr;
     }
     return memccpy(dst, src, c, (size_t)n);
@@ -314,6 +322,9 @@ void *compat_memccpy(void *dst, const void *src, int c, uint32_t n) {
 void *compat_memset_explicit(void *s, int c, uint32_t n) {
     if (s == nullptr) {
         return nullptr;
+    }
+    if (n == 0) {
+        return s;
     }
 #if defined(__GLIBC_PREREQ)
 #  if __GLIBC_PREREQ(2, 43)

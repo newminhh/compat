@@ -161,8 +161,7 @@ int newminhh_repack_stat_to_stat32(const struct stat *src, newminhh_stat32_t *ds
         return NM_ERR_ABI;
     }
 
-    newminhh_stat32_t tmp;
-    memset(&tmp, 0, sizeof(tmp));
+    newminhh_stat32_t tmp = {};
     if (newminhh_repack_timespec_to_32(&src->st_atim, &tmp.st_atim) != NM_OK ||
         newminhh_repack_timespec_to_32(&src->st_mtim, &tmp.st_mtim) != NM_OK ||
         newminhh_repack_timespec_to_32(&src->st_ctim, &tmp.st_ctim) != NM_OK) {
@@ -198,8 +197,7 @@ int newminhh_repack_stat_to_stat64(const struct stat *src, newminhh_stat64_t *ds
         return NM_ERR_ABI;
     }
 
-    newminhh_stat64_t tmp;
-    memset(&tmp, 0, sizeof(tmp));
+    newminhh_stat64_t tmp = {};
     newminhh_timespec32_t atim, mtim, ctim;
     if (newminhh_repack_timespec_to_32(&src->st_atim, &atim) != NM_OK ||
         newminhh_repack_timespec_to_32(&src->st_mtim, &mtim) != NM_OK ||
@@ -238,8 +236,7 @@ int newminhh_repack_stat_to_stat64_t64(const struct stat *src, newminhh_stat64_t
         return NM_ERR_ABI;
     }
 
-    newminhh_stat64_t64_t tmp;
-    memset(&tmp, 0, sizeof(tmp));
+    newminhh_stat64_t64_t tmp = {};
     newminhh_timespec64_t32_t atim, mtim, ctim;
     if (newminhh_repack_timespec_to_64t32(&src->st_atim, &atim) != NM_OK ||
         newminhh_repack_timespec_to_64t32(&src->st_mtim, &mtim) != NM_OK ||
@@ -286,8 +283,7 @@ int newminhh_repack_stat_to_kstat32(const struct stat *src, newminhh_kstat32_t *
         return NM_ERR_ABI;
     }
 
-    newminhh_kstat32_t tmp;
-    memset(&tmp, 0, sizeof(tmp));
+    newminhh_kstat32_t tmp = {};
     tmp.st_dev = (uint32_t)src->st_dev;
     tmp.st_ino = (uint32_t)src->st_ino;
     tmp.st_mode = (uint16_t)src->st_mode;

@@ -22,13 +22,13 @@ extern uint64_t newminhh_invoke_cdecl_asm(uintptr_t target_fn,
                                           uint8_t ret_kind,
                                           double *out_fp);
 
-static nm_guest_invoker_t g_guest_invoker = NULL;
+static nm_guest_invoker_t NM_NULLABLE_PTR g_guest_invoker = nullptr;
 
-void newminhh_register_guest_invoker(nm_guest_invoker_t invoker) {
+void newminhh_register_guest_invoker(nm_guest_invoker_t NM_NULLABLE_PTR invoker) {
     g_guest_invoker = invoker;
 }
 
-nm_guest_invoker_t newminhh_get_guest_invoker(void) {
+nm_guest_invoker_t NM_NULLABLE_PTR newminhh_get_guest_invoker(void) {
     return g_guest_invoker;
 }
 
@@ -96,7 +96,7 @@ int newminhh_mode_for_va(uint32_t guest_fn_va) {
     if (newminhh_is_native_cdecl_va(guest_fn_va)) {
         return NM_CB_MODE_NATIVE_CDECL;
     }
-    return (g_guest_invoker != NULL) ? NM_CB_MODE_DBT : NM_CB_MODE_NATIVE_CDECL;
+    return (g_guest_invoker != nullptr) ? NM_CB_MODE_DBT : NM_CB_MODE_NATIVE_CDECL;
 }
 
 /* --- Trampoline Pools (16B slots, pre-populated W^X) --- */
@@ -121,11 +121,11 @@ typedef struct {
 
 static pthread_mutex_t g_pool_lock = PTHREAD_MUTEX_INITIALIZER;
 static nm_cb_slot_t g_cb_slots[NM_CB_POOL_CAP];
-static uint8_t *g_cb_pool_page = NULL;
+static uint8_t *g_cb_pool_page = nullptr;
 static uint32_t g_cb_pool_next = 0;
 
 static nm_out_slot_t g_out_slots[NM_OUT_POOL_CAP];
-static uint8_t *g_out_pool_page = NULL;
+static uint8_t *g_out_pool_page = nullptr;
 static uint32_t g_out_pool_next = 0;
 
 static void emit_16b_slot(uint8_t *slot, uint32_t slot_id, uintptr_t common_target) {
@@ -166,12 +166,12 @@ static uint8_t *alloc_exec_pool_pages(uint32_t cap, uintptr_t common_target) {
     uint8_t *mem = (uint8_t *)mmap(hint, page_sz, PROT_READ | PROT_WRITE,
                                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (mem == MAP_FAILED) {
-        mem = (uint8_t *)mmap(NULL, page_sz, PROT_READ | PROT_WRITE,
+        mem = (uint8_t *)mmap(nullptr, page_sz, PROT_READ | PROT_WRITE,
                               MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     }
     if (mem == MAP_FAILED) {
         NM_LOG_ERROR("callbacks", "mmap trampoline pool failed: errno=%d", errno);
-        return NULL;
+        return nullptr;
     }
     for (uint32_t i = 0; i < cap; i++) {
         emit_16b_slot(mem + (size_t)i * 16u, i, common_target);
@@ -179,7 +179,7 @@ static uint8_t *alloc_exec_pool_pages(uint32_t cap, uintptr_t common_target) {
     if (mprotect(mem, page_sz, PROT_READ | PROT_EXEC) != 0) {
         NM_LOG_ERROR("callbacks", "mprotect(PROT_READ|PROT_EXEC) failed: errno=%d", errno);
         munmap(mem, page_sz);
-        return NULL;
+        return nullptr;
     }
     return mem;
 }
@@ -217,7 +217,7 @@ static int marshal_x32_to_cdecl_words(const nm_fn_sig_t *sig,
                                       uint32_t *out_words,
                                       int max_words) {
     int nwords = 0;
-    if ((flags & NM_CB_FLAG_UNTYPED) || (sig == NULL)) {
+    if ((flags & NM_CB_FLAG_UNTYPED) || (sig == nullptr)) {
         for (int i = 0; i < 6 && nwords < max_words; i++) {
             out_words[nwords++] = (uint32_t)x32_gprs[i];
         }
@@ -274,14 +274,14 @@ uint64_t newminhh_in_bridge(uint32_t guest_fn_va,
                             int mode,
                             double *out_fp_ret) {
     uint32_t words[32];
-    uint64_t dummy_gprs[6] = {0};
-    uint64_t dummy_xmms[8] = {0};
+    uint64_t dummy_gprs[6] = {};
+    uint64_t dummy_xmms[8] = {};
     int nwords = marshal_x32_to_cdecl_words(
         sig,
         x32_gprs ? x32_gprs : dummy_gprs,
         x32_xmms ? x32_xmms : dummy_xmms,
         x32_stack,
-        (sig == NULL) ? NM_CB_FLAG_UNTYPED : 0,
+        (sig == nullptr) ? NM_CB_FLAG_UNTYPED : 0,
         words, 32);
     uint64_t ret = 0;
     invoke_guest_fn(guest_fn_va, sig, words, nwords, mode, &ret, out_fp_ret);
@@ -330,7 +330,7 @@ void newminhh_out_dispatch(uint32_t slot_id,
     }
     if (slot.flags & NM_SYM_FLAG_CDECL_DIRECT) {
         typedef int (*cdecl_direct_fn_t)(const uint32_t *cdecl_args);
-        cdecl_direct_fn_t fn = (cdecl_direct_fn_t)slot.target_x32_fn;
+        cdecl_direct_fn_t fn = NM_VOIDP_TO_FN(cdecl_direct_fn_t, slot.target_x32_fn);
         int res = fn(cdecl_args);
         if (out_val) {
             *out_val = (uint64_t)(int64_t)res;
@@ -344,18 +344,18 @@ void newminhh_out_dispatch(uint32_t slot_id,
 }
 
 void *newminhh_alloc_cb_trampoline(uint32_t guest_fn_va,
-                                   const nm_fn_sig_t *sig,
+                                   const nm_fn_sig_t *NM_NULLABLE_PTR sig,
                                    int mode,
                                    uint32_t flags) {
     if (guest_fn_va == 0) {
         NM_LOG_ERROR("callbacks", "alloc_cb_trampoline: NULL guest_fn_va");
-        return NULL;
+        return nullptr;
     }
     nm_fn_sig_t resolved_sig;
     if (sig) {
         resolved_sig = *sig;
     } else {
-        memset(&resolved_sig, 0, sizeof(resolved_sig));
+        resolved_sig = (nm_fn_sig_t){};
         resolved_sig.ret_kind = NM_RET_U32;
         flags |= NM_CB_FLAG_UNTYPED;
     }
@@ -364,7 +364,7 @@ void *newminhh_alloc_cb_trampoline(uint32_t guest_fn_va,
         g_cb_pool_page = alloc_exec_pool_pages(NM_CB_POOL_CAP, (uintptr_t)newminhh_cb_common);
         if (!g_cb_pool_page) {
             pthread_mutex_unlock(&g_pool_lock);
-            return NULL;
+            return nullptr;
         }
     }
     for (uint32_t i = 0; i < g_cb_pool_next; i++) {
@@ -381,7 +381,7 @@ void *newminhh_alloc_cb_trampoline(uint32_t guest_fn_va,
     if (g_cb_pool_next >= NM_CB_POOL_CAP) {
         pthread_mutex_unlock(&g_pool_lock);
         NM_LOG_ERROR("callbacks", "callback trampoline pool exhausted (%u slots)", NM_CB_POOL_CAP);
-        return NULL;
+        return nullptr;
     }
     uint32_t id = g_cb_pool_next++;
     g_cb_slots[id].guest_fn_va = guest_fn_va;
@@ -397,14 +397,14 @@ void *newminhh_alloc_cb_trampoline(uint32_t guest_fn_va,
 void *newminhh_alloc_out_trampoline_ex(void *target_x32_fn, const nm_fn_sig_t *sig, uint32_t flags) {
     if (!target_x32_fn || !sig) {
         NM_LOG_ERROR("callbacks", "alloc_out_trampoline: NULL target or sig");
-        return NULL;
+        return nullptr;
     }
     pthread_mutex_lock(&g_pool_lock);
     if (!g_out_pool_page) {
         g_out_pool_page = alloc_exec_pool_pages(NM_OUT_POOL_CAP, (uintptr_t)newminhh_out_common);
         if (!g_out_pool_page) {
             pthread_mutex_unlock(&g_pool_lock);
-            return NULL;
+            return nullptr;
         }
     }
     for (uint32_t i = 0; i < g_out_pool_next; i++) {
@@ -420,7 +420,7 @@ void *newminhh_alloc_out_trampoline_ex(void *target_x32_fn, const nm_fn_sig_t *s
     if (g_out_pool_next >= NM_OUT_POOL_CAP) {
         pthread_mutex_unlock(&g_pool_lock);
         NM_LOG_ERROR("callbacks", "outgoing trampoline pool exhausted (%u slots)", NM_OUT_POOL_CAP);
-        return NULL;
+        return nullptr;
     }
     uint32_t id = g_out_pool_next++;
     g_out_slots[id].target_x32_fn = target_x32_fn;
@@ -460,9 +460,9 @@ void *newminhh_wrap_so_export(uint32_t guest_fn_va, const nm_fn_sig_t *sig, int 
 /* --- TLS-stack qsort / bsearch --- */
 
 #define NM_QSORT_MAX_DEPTH 16
-static __thread uint32_t tls_qsort_cbs[NM_QSORT_MAX_DEPTH];
-static __thread int tls_qsort_modes[NM_QSORT_MAX_DEPTH];
-static __thread int tls_qsort_depth = 0;
+static thread_local uint32_t tls_qsort_cbs[NM_QSORT_MAX_DEPTH];
+static thread_local int tls_qsort_modes[NM_QSORT_MAX_DEPTH];
+static thread_local int tls_qsort_depth = 0;
 
 static int compat_qsort_trampoline(const void *a, const void *b) {
     int idx = tls_qsort_depth - 1;
@@ -475,7 +475,7 @@ static int compat_qsort_trampoline(const void *a, const void *b) {
         .arg_kinds = {NM_ARG_PTR, NM_ARG_PTR}
     };
     uint64_t ret = 0;
-    invoke_guest_fn(cb, &sig, words, 2, mode, &ret, NULL);
+    invoke_guest_fn(cb, &sig, words, 2, mode, &ret, nullptr);
     return (int)(int32_t)ret;
 }
 
@@ -499,15 +499,15 @@ void compat_qsort(void *base, uint32_t nmemb, uint32_t size, uint32_t guest_comp
 
 void *compat_bsearch(const void *key, const void *base, uint32_t nmemb,
                      uint32_t size, uint32_t guest_compar_va) {
-    if (nmemb == 0) return NULL;
+    if (nmemb == 0) return nullptr;
     if (!key || !base || guest_compar_va == 0 || size == 0) {
         NM_LOG_ERROR("callbacks", "compat_bsearch: invalid arguments (key=%p base=%p cb=0x%x)",
                      key, base, guest_compar_va);
-        return NULL;
+        return nullptr;
     }
     if (tls_qsort_depth >= NM_QSORT_MAX_DEPTH) {
         NM_LOG_ERROR("callbacks", "compat_bsearch: comparator nesting depth exceeded (%d)", NM_QSORT_MAX_DEPTH);
-        return NULL;
+        return nullptr;
     }
     int idx = tls_qsort_depth++;
     tls_qsort_cbs[idx] = guest_compar_va;
@@ -542,7 +542,7 @@ static void *nm_pthread_entry(void *raw_ctx) {
         .arg_kinds = {NM_ARG_PTR}
     };
     uint64_t ret = 0;
-    invoke_guest_fn(ctx.guest_fn_va, &sig, &word, 1, ctx.mode, &ret, NULL);
+    invoke_guest_fn(ctx.guest_fn_va, &sig, &word, 1, ctx.mode, &ret, nullptr);
     return (void *)(uintptr_t)(uint32_t)ret;
 }
 
@@ -568,7 +568,7 @@ int compat_pthread_create(uint32_t *thread_out, const void *attr,
     ctx->mode = newminhh_mode_for_va(start_routine_va);
 
     pthread_t pt = 0;
-    int rc = pthread_create(&pt, NULL, nm_pthread_entry, ctx);
+    int rc = pthread_create(&pt, nullptr, nm_pthread_entry, ctx);
     if (rc != 0) {
         free(ctx);
         NM_LOG_ERROR("callbacks", "pthread_create failed: rc=%d", rc);
@@ -618,13 +618,13 @@ void newminhh_run_guest_atexits(void) {
                 .nargs = 1,
                 .arg_kinds = {NM_ARG_PTR}
             };
-            invoke_guest_fn(entry.fn_va, &sig, &entry.arg, 1, entry.mode, NULL, NULL);
+            invoke_guest_fn(entry.fn_va, &sig, &entry.arg, 1, entry.mode, nullptr, nullptr);
         } else {
             nm_fn_sig_t sig = {
                 .ret_kind = NM_RET_VOID,
                 .nargs = 0
             };
-            invoke_guest_fn(entry.fn_va, &sig, NULL, 0, entry.mode, NULL, NULL);
+            invoke_guest_fn(entry.fn_va, &sig, nullptr, 0, entry.mode, nullptr, nullptr);
         }
     }
 }
@@ -690,13 +690,13 @@ void compat___cxa_finalize(uint32_t dso_handle) {
                 .nargs = 1,
                 .arg_kinds = {NM_ARG_PTR}
             };
-            invoke_guest_fn(entry.fn_va, &sig, &entry.arg, 1, entry.mode, NULL, NULL);
+            invoke_guest_fn(entry.fn_va, &sig, &entry.arg, 1, entry.mode, nullptr, nullptr);
         } else {
             nm_fn_sig_t sig = {
                 .ret_kind = NM_RET_VOID,
                 .nargs = 0
             };
-            invoke_guest_fn(entry.fn_va, &sig, NULL, 0, entry.mode, NULL, NULL);
+            invoke_guest_fn(entry.fn_va, &sig, nullptr, 0, entry.mode, nullptr, nullptr);
         }
     }
 }
@@ -728,7 +728,7 @@ static void nm_signal_trampoline(int signum, siginfo_t *info, void *uctx) {
             .nargs = 3,
             .arg_kinds = {NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR}
         };
-        invoke_guest_fn(slot.handler_va, &sig, words, 3, slot.mode, NULL, NULL);
+        invoke_guest_fn(slot.handler_va, &sig, words, 3, slot.mode, nullptr, nullptr);
     } else {
         uint32_t word = (uint32_t)signum;
         nm_fn_sig_t sig = {
@@ -736,7 +736,7 @@ static void nm_signal_trampoline(int signum, siginfo_t *info, void *uctx) {
             .nargs = 1,
             .arg_kinds = {NM_ARG_I32}
         };
-        invoke_guest_fn(slot.handler_va, &sig, &word, 1, slot.mode, NULL, NULL);
+        invoke_guest_fn(slot.handler_va, &sig, &word, 1, slot.mode, nullptr, nullptr);
     }
 }
 
@@ -782,12 +782,12 @@ int compat_sigaction(int signum, const void *act_raw, void *oldact_raw) {
     pthread_mutex_lock(&g_sig_lock);
     nm_sig_slot_t prev_slot = g_sig_slots[signum];
     struct sigaction host_act, host_old;
-    const struct sigaction *p_act = NULL;
+    const struct sigaction *p_act = nullptr;
     if (act) {
         host_act = *act;
-        uint32_t hva = (uint32_t)(uintptr_t)((act->sa_flags & SA_SIGINFO)
-                                              ? (void *)act->sa_sigaction
-                                              : (void *)act->sa_handler);
+        uint32_t hva = (uint32_t)((act->sa_flags & SA_SIGINFO)
+                                  ? (uintptr_t)act->sa_sigaction
+                                  : (uintptr_t)act->sa_handler);
         if (hva != (uint32_t)(uintptr_t)SIG_DFL &&
             hva != (uint32_t)(uintptr_t)SIG_IGN) {
             g_sig_slots[signum].handler_va = hva;
@@ -802,7 +802,7 @@ int compat_sigaction(int signum, const void *act_raw, void *oldact_raw) {
         p_act = &host_act;
     }
 
-    int rc = sigaction(signum, p_act, oldact ? &host_old : NULL);
+    int rc = sigaction(signum, p_act, oldact ? &host_old : nullptr);
     if (rc == 0 && oldact) {
         *oldact = host_old;
         if (prev_slot.handler_va > 1u && host_old.sa_sigaction == nm_signal_trampoline) {

@@ -33,13 +33,22 @@ The x32 runtime compatibility shared library (`libnewminhh_compat.so`) for the [
 
 ## Build & Install
 
-Requires [`newminhh/common`](https://github.com/newminhh/common) at `../common` (on a native x32 toolchain with `gcc`):
+Built with **GNU C23 (`-std=gnu23`)** using **Clang (`>= 21`, default `CC ?= clang`)** as primary compiler or **GCC (`>= 15`)** as secondary compiler. Requires [`newminhh/common`](https://github.com/newminhh/common) at `../common`:
 
 ```bash
-make all
-make install   # installs libnewminhh_compat.so to $(LIBDIR) and runs ldconfig
+make all           # builds libnewminhh_compat.so (Clang default)
+make CC=gcc all    # builds with GCC 15/16
+make analyze       # runs static analysis (scan-build under Clang, -fanalyzer under GCC)
+make install       # installs libnewminhh_compat.so to $(LIBDIR) and runs ldconfig
 make clean
 ```
+
+### C11 & C23 Wrapper Additions
+In addition to POSIX and ISO C99 primitives, `libnewminhh_compat.so` provides native x32 guest wrappers for ISO C11 and ISO C23 APIs:
+- Memory management: `aligned_alloc`, `free_sized`, `free_aligned_sized`, `memset_explicit` (zeroing without compiler dead-store elimination).
+- String and memory search: `memchr`, `memccpy`, `strndup`.
+- Lifecycle & timing: `quick_exit` (clean termination without calling `atexit` handlers), `timespec_get`.
+- C23 printf specifiers: Full parsing of `w8`..`w64` and `wf8`..`wf64` fixed-width format specifiers in cdecl variadic formatters (`printf`, `fprintf`, `sprintf`, `snprintf`).
 
 ## Verification
 

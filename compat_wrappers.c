@@ -1,4 +1,6 @@
 #define _GNU_SOURCE
+#include <stdbit.h>
+#include <stdckdint.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
@@ -25,16 +27,16 @@ extern int optind, opterr, optopt;
 extern char *optarg;
 
 /* Data exports for i386 R_386_COPY / GOT references */
-FILE *compat_stdin = NULL;
-FILE *compat_stdout = NULL;
-FILE *compat_stderr = NULL;
-char *compat_optarg = NULL;
+FILE *compat_stdin = nullptr;
+FILE *compat_stdout = nullptr;
+FILE *compat_stderr = nullptr;
+char *compat_optarg = nullptr;
 int compat_optind = 1;
 int compat_opterr = 1;
 int compat_optopt = '?';
-char **compat_environ = NULL;
+char **compat_environ = nullptr;
 
-__attribute__((constructor))
+NM_CONSTRUCTOR
 static void compat_init_data_exports(void) {
     compat_stdin = stdin;
     compat_stdout = stdout;
@@ -69,7 +71,7 @@ static nm_mutex_entry_t g_mutex_map[NM_MUTEX_MAP_CAP];
 
 static pthread_mutex_t *lookup_or_create_host_mutex(void *guest_mutex, int reinit,
                                                     const pthread_mutexattr_t *attr) {
-    if (!guest_mutex) return NULL;
+    if (!guest_mutex) return nullptr;
     pthread_mutex_lock(&g_mutex_map_lock);
     int free_idx = -1;
     for (int i = 0; i < NM_MUTEX_MAP_CAP; i++) {
@@ -90,7 +92,7 @@ static pthread_mutex_t *lookup_or_create_host_mutex(void *guest_mutex, int reini
     if (free_idx < 0) {
         pthread_mutex_unlock(&g_mutex_map_lock);
         NM_LOG_ERROR("wrappers", "pthread_mutex shadow table full");
-        return NULL;
+        return nullptr;
     }
     g_mutex_map[free_idx].guest_ptr = guest_mutex;
     g_mutex_map[free_idx].in_use = 1;
@@ -100,9 +102,8 @@ static pthread_mutex_t *lookup_or_create_host_mutex(void *guest_mutex, int reini
     return res;
 }
 
-int compat_pthread_mutex_init(void *guest_mutex, const void *attr) {
-    (void)attr;
-    pthread_mutex_t *m = lookup_or_create_host_mutex(guest_mutex, 1, NULL);
+int compat_pthread_mutex_init(void *guest_mutex, [[maybe_unused]] const void *attr) {
+    pthread_mutex_t *m = lookup_or_create_host_mutex(guest_mutex, 1, nullptr);
     return m ? 0 : EINVAL;
 }
 
@@ -113,7 +114,7 @@ int compat_pthread_mutex_destroy(void *guest_mutex) {
         if (g_mutex_map[i].in_use && g_mutex_map[i].guest_ptr == guest_mutex) {
             int rc = pthread_mutex_destroy(&g_mutex_map[i].host_mutex);
             g_mutex_map[i].in_use = 0;
-            g_mutex_map[i].guest_ptr = NULL;
+            g_mutex_map[i].guest_ptr = nullptr;
             pthread_mutex_unlock(&g_mutex_map_lock);
             return rc;
         }
@@ -123,17 +124,17 @@ int compat_pthread_mutex_destroy(void *guest_mutex) {
 }
 
 int compat_pthread_mutex_lock(void *guest_mutex) {
-    pthread_mutex_t *m = lookup_or_create_host_mutex(guest_mutex, 0, NULL);
+    pthread_mutex_t *m = lookup_or_create_host_mutex(guest_mutex, 0, nullptr);
     return m ? pthread_mutex_lock(m) : EINVAL;
 }
 
 int compat_pthread_mutex_trylock(void *guest_mutex) {
-    pthread_mutex_t *m = lookup_or_create_host_mutex(guest_mutex, 0, NULL);
+    pthread_mutex_t *m = lookup_or_create_host_mutex(guest_mutex, 0, nullptr);
     return m ? pthread_mutex_trylock(m) : EINVAL;
 }
 
 int compat_pthread_mutex_unlock(void *guest_mutex) {
-    pthread_mutex_t *m = lookup_or_create_host_mutex(guest_mutex, 0, NULL);
+    pthread_mutex_t *m = lookup_or_create_host_mutex(guest_mutex, 0, nullptr);
     return m ? pthread_mutex_unlock(m) : EINVAL;
 }
 
@@ -165,7 +166,7 @@ static pthread_mutex_t g_cond_map_lock = PTHREAD_MUTEX_INITIALIZER;
 static nm_cond_entry_t g_cond_map[NM_COND_MAP_CAP];
 
 static pthread_cond_t *lookup_or_create_host_cond(void *guest_cond, int reinit) {
-    if (!guest_cond) return NULL;
+    if (!guest_cond) return nullptr;
     pthread_mutex_lock(&g_cond_map_lock);
     int free_idx = -1;
     for (int i = 0; i < NM_COND_MAP_CAP; i++) {
@@ -173,7 +174,7 @@ static pthread_cond_t *lookup_or_create_host_cond(void *guest_cond, int reinit) 
             if (g_cond_map[i].guest_ptr == guest_cond) {
                 if (reinit) {
                     pthread_cond_destroy(&g_cond_map[i].host_cond);
-                    pthread_cond_init(&g_cond_map[i].host_cond, NULL);
+                    pthread_cond_init(&g_cond_map[i].host_cond, nullptr);
                 }
                 pthread_cond_t *res = &g_cond_map[i].host_cond;
                 pthread_mutex_unlock(&g_cond_map_lock);
@@ -185,18 +186,17 @@ static pthread_cond_t *lookup_or_create_host_cond(void *guest_cond, int reinit) 
     }
     if (free_idx < 0) {
         pthread_mutex_unlock(&g_cond_map_lock);
-        return NULL;
+        return nullptr;
     }
     g_cond_map[free_idx].guest_ptr = guest_cond;
     g_cond_map[free_idx].in_use = 1;
-    pthread_cond_init(&g_cond_map[free_idx].host_cond, NULL);
+    pthread_cond_init(&g_cond_map[free_idx].host_cond, nullptr);
     pthread_cond_t *res = &g_cond_map[free_idx].host_cond;
     pthread_mutex_unlock(&g_cond_map_lock);
     return res;
 }
 
-int compat_pthread_cond_init(void *cond, const void *attr) {
-    (void)attr;
+int compat_pthread_cond_init(void *cond, [[maybe_unused]] const void *attr) {
     return lookup_or_create_host_cond(cond, 1) ? 0 : EINVAL;
 }
 
@@ -207,7 +207,7 @@ int compat_pthread_cond_destroy(void *cond) {
         if (g_cond_map[i].in_use && g_cond_map[i].guest_ptr == cond) {
             int rc = pthread_cond_destroy(&g_cond_map[i].host_cond);
             g_cond_map[i].in_use = 0;
-            g_cond_map[i].guest_ptr = NULL;
+            g_cond_map[i].guest_ptr = nullptr;
             pthread_mutex_unlock(&g_cond_map_lock);
             return rc;
         }
@@ -218,13 +218,13 @@ int compat_pthread_cond_destroy(void *cond) {
 
 int compat_pthread_cond_wait(void *cond, void *mutex) {
     pthread_cond_t *c = lookup_or_create_host_cond(cond, 0);
-    pthread_mutex_t *m = lookup_or_create_host_mutex(mutex, 0, NULL);
+    pthread_mutex_t *m = lookup_or_create_host_mutex(mutex, 0, nullptr);
     return (c && m) ? pthread_cond_wait(c, m) : EINVAL;
 }
 
 int compat_pthread_cond_timedwait(void *cond, void *mutex, const newminhh_timespec32_t *abstime) {
     pthread_cond_t *c = lookup_or_create_host_cond(cond, 0);
-    pthread_mutex_t *m = lookup_or_create_host_mutex(mutex, 0, NULL);
+    pthread_mutex_t *m = lookup_or_create_host_mutex(mutex, 0, nullptr);
     struct timespec ts;
     if (!c || !m || newminhh_repack_timespec_from_32(abstime, &ts) != NM_OK) return EINVAL;
     return pthread_cond_timedwait(c, m, &ts);
@@ -244,8 +244,36 @@ int compat_pthread_cond_broadcast(void *cond) {
 
 void *compat_malloc(uint32_t sz) { return malloc((size_t)sz); }
 void *compat_calloc(uint32_t n, uint32_t sz) { return calloc((size_t)n, (size_t)sz); }
-void *compat_realloc(void *p, uint32_t sz) { return realloc(p, (size_t)sz); }
+void *compat_realloc(void *p, uint32_t sz) {
+    if (sz == 0) {
+        if (p != nullptr) {
+            free(p);
+            return nullptr;
+        }
+        return malloc(1);
+    }
+    return realloc(p, (size_t)sz);
+}
 void compat_free(void *p) { free(p); }
+
+void *compat_aligned_alloc(uint32_t alignment, uint32_t size) {
+    if (alignment < sizeof(void *) || !stdc_has_single_bit(alignment)) {
+        errno = EINVAL;
+        return nullptr;
+    }
+    size_t alloc_sz = (size % alignment == 0) ? (size_t)size : (((size_t)size + alignment - 1) & ~((size_t)alignment - 1));
+    if (alloc_sz == 0) alloc_sz = alignment;
+    return aligned_alloc((size_t)alignment, alloc_sz);
+}
+
+void compat_free_sized(void *p, [[maybe_unused]] uint32_t sz) {
+    free(p);
+}
+
+void compat_free_aligned_sized(void *p, [[maybe_unused]] uint32_t align, [[maybe_unused]] uint32_t sz) {
+    free(p);
+}
+
 void *compat_memset(void *s, int c, uint32_t n) { return memset(s, c, (size_t)n); }
 void *compat_memcpy(void *d, const void *s, uint32_t n) { return memcpy(d, s, (size_t)n); }
 void *compat_memmove(void *d, const void *s, uint32_t n) { return memmove(d, s, (size_t)n); }
@@ -261,6 +289,47 @@ char *compat_strchr(const char *s, int c) { return (char *)(uintptr_t)strchr(s, 
 char *compat_strrchr(const char *s, int c) { return (char *)(uintptr_t)strrchr(s, c); }
 char *compat_strstr(const char *h, const char *n) { return (char *)(uintptr_t)strstr(h, n); }
 char *compat_strdup(const char *s) { return strdup(s); }
+char *compat_strndup(const char *s, uint32_t n) {
+    if (s == nullptr) {
+        errno = EINVAL;
+        return nullptr;
+    }
+    return strndup(s, (size_t)n);
+}
+
+void *compat_memchr(const void *s, int c, uint32_t n) {
+    if (s == nullptr && n > 0) {
+        return nullptr;
+    }
+    return (void *)(uintptr_t)memchr(s, c, (size_t)n);
+}
+
+void *compat_memccpy(void *dst, const void *src, int c, uint32_t n) {
+    if (dst == nullptr || src == nullptr) {
+        return nullptr;
+    }
+    return memccpy(dst, src, c, (size_t)n);
+}
+
+void *compat_memset_explicit(void *s, int c, uint32_t n) {
+    if (s == nullptr) {
+        return nullptr;
+    }
+#if defined(__GLIBC_PREREQ)
+#  if __GLIBC_PREREQ(2, 43)
+    return memset_explicit(s, c, (size_t)n);
+#  else
+    volatile unsigned char *p = (volatile unsigned char *)s;
+    for (size_t i = 0; i < (size_t)n; i++) {
+        p[i] = (unsigned char)c;
+    }
+    __asm__ volatile("" : : "r"(s) : "memory");
+    return s;
+#  endif
+#else
+    return memset_explicit(s, c, (size_t)n);
+#endif
+}
 
 int32_t compat_strtol(const char *nptr, char **endptr, int base) {
     return (int32_t)strtol(nptr, endptr, base);
@@ -303,6 +372,7 @@ int compat_unsetenv(const char *name) {
 
 /* --- Stdio --- */
 
+NM_PRINTF_FMT(1, 2)
 int compat_printf(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -311,6 +381,7 @@ int compat_printf(const char *fmt, ...) {
     return r;
 }
 
+NM_PRINTF_FMT(2, 3)
 int compat_fprintf(FILE *fp, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -319,6 +390,7 @@ int compat_fprintf(FILE *fp, const char *fmt, ...) {
     return r;
 }
 
+NM_PRINTF_FMT(2, 3)
 int compat_sprintf(char *str, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -327,6 +399,7 @@ int compat_sprintf(char *str, const char *fmt, ...) {
     return r;
 }
 
+NM_PRINTF_FMT(3, 4)
 int compat_snprintf(char *str, uint32_t size, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -339,19 +412,19 @@ static int format_from_cdecl_words(FILE *fp, char *dst, size_t dst_sz, int to_fi
                                     const char *fmt, const uint32_t *args);
 
 int compat_vprintf(const char *fmt, va_list ap) {
-    return format_from_cdecl_words(stdout, NULL, 0, 1, fmt,
+    return format_from_cdecl_words(stdout, nullptr, 0, 1, fmt,
                                     (const uint32_t *)(const void *)ap);
 }
 int compat_vfprintf(FILE *fp, const char *fmt, va_list ap) {
-    return format_from_cdecl_words(fp, NULL, 0, 1, fmt,
+    return format_from_cdecl_words(fp, nullptr, 0, 1, fmt,
                                     (const uint32_t *)(const void *)ap);
 }
 int compat_vsprintf(char *str, const char *fmt, va_list ap) {
-    return format_from_cdecl_words(NULL, str, (size_t)0x7FFFFFFFu, 0, fmt,
+    return format_from_cdecl_words(nullptr, str, (size_t)0x7FFFFFFFu, 0, fmt,
                                     (const uint32_t *)(const void *)ap);
 }
 int compat_vsnprintf(char *str, uint32_t size, const char *fmt, va_list ap) {
-    return format_from_cdecl_words(NULL, str, (size_t)size, 0, fmt,
+    return format_from_cdecl_words(nullptr, str, (size_t)size, 0, fmt,
                                     (const uint32_t *)(const void *)ap);
 }
 
@@ -461,9 +534,25 @@ static int format_from_cdecl_words(FILE *fp, char *dst, size_t dst_sz, int to_fi
             else is_z = 1;
             if (slen + 2 < sizeof(spec_buf)) spec_buf[slen++] = *p;
             p++;
+        } else if (*p == 'w') {
+            if (slen + 2 < sizeof(spec_buf)) spec_buf[slen++] = *p;
+            p++;
+            if (*p == 'f') {
+                if (slen + 2 < sizeof(spec_buf)) spec_buf[slen++] = *p;
+                p++;
+            }
+            int width_num = 0;
+            while (*p >= '0' && *p <= '9') {
+                width_num = width_num * 10 + (*p - '0');
+                if (slen + 2 < sizeof(spec_buf)) spec_buf[slen++] = *p;
+                p++;
+            }
+            if (width_num == 64) {
+                is_ll = 1;
+            }
         }
-        (void)is_l;
-        (void)is_z;
+        [[maybe_unused]] int _unused_l = is_l;
+        [[maybe_unused]] int _unused_z = is_z;
 
         char conv = *p;
         if (conv == '\0') {
@@ -476,6 +565,8 @@ static int format_from_cdecl_words(FILE *fp, char *dst, size_t dst_sz, int to_fi
 
         char tmp[512];
         int n = 0;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
         if (conv == 's') {
             const char *s = (const char *)(uintptr_t)args[idx++];
             if (!s) s = "(null)";
@@ -544,6 +635,7 @@ static int format_from_cdecl_words(FILE *fp, char *dst, size_t dst_sz, int to_fi
             else n = snprintf(tmp, sizeof(tmp), spec_buf, v);
             if (n > 0) EMIT_STR(tmp, (size_t)n < sizeof(tmp) ? (size_t)n : sizeof(tmp) - 1);
         }
+#pragma GCC diagnostic pop
     }
     if (!to_file && dst && dst_sz > 0) {
         dst[out_pos < dst_sz ? out_pos : dst_sz - 1] = '\0';
@@ -555,26 +647,26 @@ static int format_from_cdecl_words(FILE *fp, char *dst, size_t dst_sz, int to_fi
 
 int compat_printf_cdecl(const uint32_t *cdecl_args) {
     const char *fmt = (const char *)(uintptr_t)cdecl_args[0];
-    return format_from_cdecl_words(stdout, NULL, 0, 1, fmt, cdecl_args + 1);
+    return format_from_cdecl_words(stdout, nullptr, 0, 1, fmt, cdecl_args + 1);
 }
 
 int compat_fprintf_cdecl(const uint32_t *cdecl_args) {
     FILE *fp = (FILE *)(uintptr_t)cdecl_args[0];
     const char *fmt = (const char *)(uintptr_t)cdecl_args[1];
-    return format_from_cdecl_words(fp, NULL, 0, 1, fmt, cdecl_args + 2);
+    return format_from_cdecl_words(fp, nullptr, 0, 1, fmt, cdecl_args + 2);
 }
 
 int compat_sprintf_cdecl(const uint32_t *cdecl_args) {
     char *dst = (char *)(uintptr_t)cdecl_args[0];
     const char *fmt = (const char *)(uintptr_t)cdecl_args[1];
-    return format_from_cdecl_words(NULL, dst, (size_t)0x7FFFFFFFu, 0, fmt, cdecl_args + 2);
+    return format_from_cdecl_words(nullptr, dst, (size_t)0x7FFFFFFFu, 0, fmt, cdecl_args + 2);
 }
 
 int compat_snprintf_cdecl(const uint32_t *cdecl_args) {
     char *dst = (char *)(uintptr_t)cdecl_args[0];
     uint32_t sz = cdecl_args[1];
     const char *fmt = (const char *)(uintptr_t)cdecl_args[2];
-    return format_from_cdecl_words(NULL, dst, (size_t)sz, 0, fmt, cdecl_args + 3);
+    return format_from_cdecl_words(nullptr, dst, (size_t)sz, 0, fmt, cdecl_args + 3);
 }
 
 int compat_puts(const char *s) { return puts(s); }
@@ -807,11 +899,26 @@ int compat___clock_gettime64(int clk_id, newminhh_timespec64_t32_t *tp) {
     return (newminhh_repack_timespec_to_64t32(&xts, tp) == NM_OK) ? 0 : -1;
 }
 
+int compat_timespec_get(newminhh_timespec32_t *ts32, int base) {
+    if (!ts32) {
+        return 0;
+    }
+    struct timespec ts;
+    int res = timespec_get(&ts, base);
+    if (res == 0) {
+        return 0;
+    }
+    if (newminhh_repack_timespec_to_32(&ts, ts32) != NM_OK) {
+        return 0;
+    }
+    return res;
+}
+
 int compat_nanosleep(const newminhh_timespec32_t *req, newminhh_timespec32_t *rem) {
     if (!req) { errno = EFAULT; return -1; }
     struct timespec xreq, xrem;
     if (newminhh_repack_timespec_from_32(req, &xreq) != NM_OK) return -1;
-    int rc = nanosleep(&xreq, rem ? &xrem : NULL);
+    int rc = nanosleep(&xreq, rem ? &xrem : nullptr);
     if (rc != 0 && errno == EINTR && rem) {
         newminhh_repack_timespec_to_32(&xrem, rem);
     }
@@ -822,7 +929,7 @@ int compat___nanosleep64(const newminhh_timespec64_t32_t *req, newminhh_timespec
     if (!req) { errno = EFAULT; return -1; }
     struct timespec xreq, xrem;
     if (newminhh_repack_timespec_from_64t32(req, &xreq) != NM_OK) return -1;
-    int rc = nanosleep(&xreq, rem ? &xrem : NULL);
+    int rc = nanosleep(&xreq, rem ? &xrem : nullptr);
     if (rc != 0 && errno == EINTR && rem) {
         newminhh_repack_timespec_to_64t32(&xrem, rem);
     }
@@ -834,7 +941,7 @@ int compat_clock_nanosleep(int clk_id, int flags, const newminhh_timespec32_t *r
     if (!req) { errno = EFAULT; return -1; }
     struct timespec xreq, xrem;
     if (newminhh_repack_timespec_from_32(req, &xreq) != NM_OK) return -1;
-    int rc = clock_nanosleep((clockid_t)clk_id, flags, &xreq, rem ? &xrem : NULL);
+    int rc = clock_nanosleep((clockid_t)clk_id, flags, &xreq, rem ? &xrem : nullptr);
     if (rc == EINTR && rem) {
         newminhh_repack_timespec_to_32(&xrem, rem);
     }
@@ -846,7 +953,7 @@ int compat___clock_nanosleep64(int clk_id, int flags, const newminhh_timespec64_
     if (!req) { errno = EFAULT; return -1; }
     struct timespec xreq, xrem;
     if (newminhh_repack_timespec_from_64t32(req, &xreq) != NM_OK) return -1;
-    int rc = clock_nanosleep((clockid_t)clk_id, flags, &xreq, rem ? &xrem : NULL);
+    int rc = clock_nanosleep((clockid_t)clk_id, flags, &xreq, rem ? &xrem : nullptr);
     if (rc == EINTR && rem) {
         newminhh_repack_timespec_to_64t32(&xrem, rem);
     }
@@ -857,14 +964,14 @@ int compat_gettimeofday(void *tv32, void *tz) {
     (void)tz;
     if (!tv32) return 0;
     struct timeval tv;
-    if (gettimeofday(&tv, NULL) != 0) return -1;
+    if (gettimeofday(&tv, nullptr) != 0) return -1;
     int32_t out[2] = {(int32_t)tv.tv_sec, (int32_t)tv.tv_usec};
     memcpy(tv32, out, sizeof(out));
     return 0;
 }
 
 int32_t compat_time(int32_t *tloc) {
-    time_t t = time(NULL);
+    time_t t = time(nullptr);
     if (tloc) *tloc = (int32_t)t;
     return (int32_t)t;
 }
@@ -901,7 +1008,7 @@ int compat_prlimit(int pid, int resource, const newminhh_rlimit32_t *new_lim,
                    newminhh_rlimit32_t *old_lim) {
     struct rlimit xn, xo;
     if (new_lim && newminhh_repack_rlimit_from_32(new_lim, &xn) != NM_OK) return -1;
-    if (prlimit((pid_t)pid, resource, new_lim ? &xn : NULL, old_lim ? &xo : NULL) != 0) return -1;
+    if (prlimit((pid_t)pid, resource, new_lim ? &xn : nullptr, old_lim ? &xo : nullptr) != 0) return -1;
     if (old_lim && newminhh_repack_rlimit_to_32(&xo, old_lim) != NM_OK) return -1;
     return 0;
 }
@@ -910,7 +1017,7 @@ int compat_prlimit64(int pid, int resource, const newminhh_rlimit64_t32_t *new_l
                      newminhh_rlimit64_t32_t *old_lim) {
     struct rlimit xn, xo;
     if (new_lim && newminhh_repack_rlimit_from_64t32(new_lim, &xn) != NM_OK) return -1;
-    if (prlimit((pid_t)pid, resource, new_lim ? &xn : NULL, old_lim ? &xo : NULL) != 0) return -1;
+    if (prlimit((pid_t)pid, resource, new_lim ? &xn : nullptr, old_lim ? &xo : nullptr) != 0) return -1;
     if (old_lim && newminhh_repack_rlimit_to_64t32(&xo, old_lim) != NM_OK) return -1;
     return 0;
 }
@@ -924,6 +1031,10 @@ void compat_exit(int status) {
 
 void compat__exit(int status) {
     _exit(status);
+}
+
+[[noreturn]] void compat_quick_exit(int status) {
+    quick_exit(status);
 }
 
 void compat_abort(void) {
@@ -955,9 +1066,9 @@ int compat___libc_start_main(uint32_t main_va, int argc, char **argv,
             .arg_kinds = {NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR}
         };
         uint64_t gprs[6] = {(uint64_t)argc, (uint64_t)(uintptr_t)argv, (uint64_t)(uintptr_t)environ, 0, 0, 0};
-        newminhh_in_bridge(init_va, &init_sig, gprs, NULL, NULL,
+        newminhh_in_bridge(init_va, &init_sig, gprs, nullptr, nullptr,
                            newminhh_mode_for_va(init_va),
-                           NULL);
+                           nullptr);
     }
     nm_fn_sig_t main_sig = {
         .ret_kind = NM_RET_I32,
@@ -965,9 +1076,9 @@ int compat___libc_start_main(uint32_t main_va, int argc, char **argv,
         .arg_kinds = {NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR}
     };
     uint64_t gprs[6] = {(uint64_t)argc, (uint64_t)(uintptr_t)argv, (uint64_t)(uintptr_t)environ, 0, 0, 0};
-    uint64_t ret = newminhh_in_bridge(main_va, &main_sig, gprs, NULL, NULL,
+    uint64_t ret = newminhh_in_bridge(main_va, &main_sig, gprs, nullptr, nullptr,
                                       newminhh_mode_for_va(main_va),
-                                      NULL);
+                                      nullptr);
     compat_exit((int)(int32_t)ret);
     return 0;
 }
@@ -1016,194 +1127,203 @@ static nm_sym_entry_t g_sym_table[] = {
     {"environ", &compat_environ, SIG0(NM_RET_PTR), NM_SYM_FLAG_DATA},
 
     /* Alloc / mem */
-    {"malloc",  (void *)compat_malloc,  SIG1(NM_RET_PTR, NM_ARG_U32), 0},
-    {"calloc",  (void *)compat_calloc,  SIG2(NM_RET_PTR, NM_ARG_U32, NM_ARG_U32), 0},
-    {"realloc", (void *)compat_realloc, SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
-    {"free",    (void *)compat_free,    SIG1(NM_RET_VOID, NM_ARG_PTR), 0},
-    {"memset",  (void *)compat_memset,  SIG3(NM_RET_PTR, NM_ARG_PTR, NM_ARG_I32, NM_ARG_U32), 0},
-    {"memcpy",  (void *)compat_memcpy,  SIG3(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
-    {"memmove", (void *)compat_memmove, SIG3(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
-    {"memcmp",  (void *)compat_memcmp,  SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
+    {"malloc",  (void *)(uintptr_t)compat_malloc,  SIG1(NM_RET_PTR, NM_ARG_U32), 0},
+    {"calloc",  (void *)(uintptr_t)compat_calloc,  SIG2(NM_RET_PTR, NM_ARG_U32, NM_ARG_U32), 0},
+    {"realloc", (void *)(uintptr_t)compat_realloc, SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
+    {"free",    (void *)(uintptr_t)compat_free,    SIG1(NM_RET_VOID, NM_ARG_PTR), 0},
+    {"aligned_alloc", (void *)(uintptr_t)compat_aligned_alloc, SIG2(NM_RET_PTR, NM_ARG_U32, NM_ARG_U32), 0},
+    {"free_sized", (void *)(uintptr_t)compat_free_sized, SIG2(NM_RET_VOID, NM_ARG_PTR, NM_ARG_U32), 0},
+    {"free_aligned_sized", (void *)(uintptr_t)compat_free_aligned_sized, SIG3(NM_RET_VOID, NM_ARG_PTR, NM_ARG_U32, NM_ARG_U32), 0},
+    {"memset",  (void *)(uintptr_t)compat_memset,  SIG3(NM_RET_PTR, NM_ARG_PTR, NM_ARG_I32, NM_ARG_U32), 0},
+    {"memcpy",  (void *)(uintptr_t)compat_memcpy,  SIG3(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
+    {"memmove", (void *)(uintptr_t)compat_memmove, SIG3(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
+    {"memcmp",  (void *)(uintptr_t)compat_memcmp,  SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
+    {"memchr",  (void *)(uintptr_t)compat_memchr,  SIG3(NM_RET_PTR, NM_ARG_PTR, NM_ARG_I32, NM_ARG_U32), 0},
+    {"memccpy", (void *)(uintptr_t)compat_memccpy, SIG4(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32, NM_ARG_U32), 0},
+    {"memset_explicit", (void *)(uintptr_t)compat_memset_explicit, SIG3(NM_RET_PTR, NM_ARG_PTR, NM_ARG_I32, NM_ARG_U32), 0},
 
     /* Strings & numeric */
-    {"strlen",  (void *)compat_strlen,  SIG1(NM_RET_U32, NM_ARG_PTR), 0},
-    {"strcmp",  (void *)compat_strcmp,  SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"strncmp", (void *)compat_strncmp, SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
-    {"strcpy",  (void *)compat_strcpy,  SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"strncpy", (void *)compat_strncpy, SIG3(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
-    {"strcat",  (void *)compat_strcat,  SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"strchr",  (void *)compat_strchr,  SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"strrchr", (void *)compat_strrchr, SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"strstr",  (void *)compat_strstr,  SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"strdup",  (void *)compat_strdup,  SIG1(NM_RET_PTR, NM_ARG_PTR), 0},
-    {"strtol",  (void *)compat_strtol,  SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"strtoul", (void *)compat_strtoul, SIG3(NM_RET_U32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"strtoll", (void *)compat_strtoll, SIG3(NM_RET_I64, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"strtoull",(void *)compat_strtoull,SIG3(NM_RET_U64, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"__isoc23_strtol",  (void *)compat___isoc23_strtol,  SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"__isoc23_strtoul", (void *)compat___isoc23_strtoul, SIG3(NM_RET_U32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"__isoc23_strtoll", (void *)compat___isoc23_strtoll, SIG3(NM_RET_I64, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"__isoc23_strtoull",(void *)compat___isoc23_strtoull,SIG3(NM_RET_U64, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"atoi",    (void *)compat_atoi,    SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"atol",    (void *)compat_atol,    SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"getenv",  (void *)compat_getenv,  SIG1(NM_RET_PTR, NM_ARG_PTR), 0},
-    {"setenv",  (void *)compat_setenv,  SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"unsetenv",(void *)compat_unsetenv,SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"strlen",  (void *)(uintptr_t)compat_strlen,  SIG1(NM_RET_U32, NM_ARG_PTR), 0},
+    {"strcmp",  (void *)(uintptr_t)compat_strcmp,  SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"strncmp", (void *)(uintptr_t)compat_strncmp, SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
+    {"strcpy",  (void *)(uintptr_t)compat_strcpy,  SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"strncpy", (void *)(uintptr_t)compat_strncpy, SIG3(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
+    {"strcat",  (void *)(uintptr_t)compat_strcat,  SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"strchr",  (void *)(uintptr_t)compat_strchr,  SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"strrchr", (void *)(uintptr_t)compat_strrchr, SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"strstr",  (void *)(uintptr_t)compat_strstr,  SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"strdup",  (void *)(uintptr_t)compat_strdup,  SIG1(NM_RET_PTR, NM_ARG_PTR), 0},
+    {"strndup", (void *)(uintptr_t)compat_strndup, SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
+    {"strtol",  (void *)(uintptr_t)compat_strtol,  SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"strtoul", (void *)(uintptr_t)compat_strtoul, SIG3(NM_RET_U32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"strtoll", (void *)(uintptr_t)compat_strtoll, SIG3(NM_RET_I64, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"strtoull",(void *)(uintptr_t)compat_strtoull,SIG3(NM_RET_U64, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"__isoc23_strtol",  (void *)(uintptr_t)compat___isoc23_strtol,  SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"__isoc23_strtoul", (void *)(uintptr_t)compat___isoc23_strtoul, SIG3(NM_RET_U32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"__isoc23_strtoll", (void *)(uintptr_t)compat___isoc23_strtoll, SIG3(NM_RET_I64, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"__isoc23_strtoull",(void *)(uintptr_t)compat___isoc23_strtoull,SIG3(NM_RET_U64, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"atoi",    (void *)(uintptr_t)compat_atoi,    SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"atol",    (void *)(uintptr_t)compat_atol,    SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"getenv",  (void *)(uintptr_t)compat_getenv,  SIG1(NM_RET_PTR, NM_ARG_PTR), 0},
+    {"setenv",  (void *)(uintptr_t)compat_setenv,  SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"unsetenv",(void *)(uintptr_t)compat_unsetenv,SIG1(NM_RET_I32, NM_ARG_PTR), 0},
 
     /* Stdio */
-    {"printf",   (void *)compat_printf_cdecl,   SIG1(NM_RET_I32, NM_ARG_PTR), NM_SYM_FLAG_VARIADIC | NM_SYM_FLAG_CDECL_DIRECT},
-    {"fprintf",  (void *)compat_fprintf_cdecl,  SIG1(NM_RET_I32, NM_ARG_PTR), NM_SYM_FLAG_VARIADIC | NM_SYM_FLAG_CDECL_DIRECT},
-    {"sprintf",  (void *)compat_sprintf_cdecl,  SIG1(NM_RET_I32, NM_ARG_PTR), NM_SYM_FLAG_VARIADIC | NM_SYM_FLAG_CDECL_DIRECT},
-    {"snprintf", (void *)compat_snprintf_cdecl, SIG1(NM_RET_I32, NM_ARG_PTR), NM_SYM_FLAG_VARIADIC | NM_SYM_FLAG_CDECL_DIRECT},
-    {"vprintf",  (void *)compat_vprintf,  SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"vfprintf", (void *)compat_vfprintf, SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"vsprintf", (void *)compat_vsprintf, SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"vsnprintf",(void *)compat_vsnprintf,SIG4(NM_RET_I32, NM_ARG_PTR, NM_ARG_U32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"puts",     (void *)compat_puts,     SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"fputs",    (void *)compat_fputs,    SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"putchar",  (void *)compat_putchar,  SIG1(NM_RET_I32, NM_ARG_I32), 0},
-    {"fputc",    (void *)compat_fputc,    SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
-    {"fwrite",   (void *)compat_fwrite,   SIG4(NM_RET_U32, NM_ARG_PTR, NM_ARG_U32, NM_ARG_U32, NM_ARG_PTR), 0},
-    {"fread",    (void *)compat_fread,    SIG4(NM_RET_U32, NM_ARG_PTR, NM_ARG_U32, NM_ARG_U32, NM_ARG_PTR), 0},
-    {"fopen",    (void *)compat_fopen,    SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"fopen64",  (void *)compat_fopen64,  SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"fclose",   (void *)compat_fclose,   SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"fflush",   (void *)compat_fflush,   SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"fseek",    (void *)compat_fseek,    SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_I32, NM_ARG_I32), 0},
-    {"ftell",    (void *)compat_ftell,    SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"fgets",    (void *)compat_fgets,    SIG3(NM_RET_PTR, NM_ARG_PTR, NM_ARG_I32, NM_ARG_PTR), 0},
-    {"perror",   (void *)compat_perror,   SIG1(NM_RET_VOID, NM_ARG_PTR), 0},
-    {"setvbuf",  (void *)compat_setvbuf,  SIG4(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32, NM_ARG_U32), 0},
+    {"printf",   (void *)(uintptr_t)compat_printf_cdecl,   SIG1(NM_RET_I32, NM_ARG_PTR), NM_SYM_FLAG_VARIADIC | NM_SYM_FLAG_CDECL_DIRECT},
+    {"fprintf",  (void *)(uintptr_t)compat_fprintf_cdecl,  SIG1(NM_RET_I32, NM_ARG_PTR), NM_SYM_FLAG_VARIADIC | NM_SYM_FLAG_CDECL_DIRECT},
+    {"sprintf",  (void *)(uintptr_t)compat_sprintf_cdecl,  SIG1(NM_RET_I32, NM_ARG_PTR), NM_SYM_FLAG_VARIADIC | NM_SYM_FLAG_CDECL_DIRECT},
+    {"snprintf", (void *)(uintptr_t)compat_snprintf_cdecl, SIG1(NM_RET_I32, NM_ARG_PTR), NM_SYM_FLAG_VARIADIC | NM_SYM_FLAG_CDECL_DIRECT},
+    {"vprintf",  (void *)(uintptr_t)compat_vprintf,  SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"vfprintf", (void *)(uintptr_t)compat_vfprintf, SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"vsprintf", (void *)(uintptr_t)compat_vsprintf, SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"vsnprintf",(void *)(uintptr_t)compat_vsnprintf,SIG4(NM_RET_I32, NM_ARG_PTR, NM_ARG_U32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"puts",     (void *)(uintptr_t)compat_puts,     SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"fputs",    (void *)(uintptr_t)compat_fputs,    SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"putchar",  (void *)(uintptr_t)compat_putchar,  SIG1(NM_RET_I32, NM_ARG_I32), 0},
+    {"fputc",    (void *)(uintptr_t)compat_fputc,    SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
+    {"fwrite",   (void *)(uintptr_t)compat_fwrite,   SIG4(NM_RET_U32, NM_ARG_PTR, NM_ARG_U32, NM_ARG_U32, NM_ARG_PTR), 0},
+    {"fread",    (void *)(uintptr_t)compat_fread,    SIG4(NM_RET_U32, NM_ARG_PTR, NM_ARG_U32, NM_ARG_U32, NM_ARG_PTR), 0},
+    {"fopen",    (void *)(uintptr_t)compat_fopen,    SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"fopen64",  (void *)(uintptr_t)compat_fopen64,  SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"fclose",   (void *)(uintptr_t)compat_fclose,   SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"fflush",   (void *)(uintptr_t)compat_fflush,   SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"fseek",    (void *)(uintptr_t)compat_fseek,    SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_I32, NM_ARG_I32), 0},
+    {"ftell",    (void *)(uintptr_t)compat_ftell,    SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"fgets",    (void *)(uintptr_t)compat_fgets,    SIG3(NM_RET_PTR, NM_ARG_PTR, NM_ARG_I32, NM_ARG_PTR), 0},
+    {"perror",   (void *)(uintptr_t)compat_perror,   SIG1(NM_RET_VOID, NM_ARG_PTR), 0},
+    {"setvbuf",  (void *)(uintptr_t)compat_setvbuf,  SIG4(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32, NM_ARG_U32), 0},
 
     /* File / POSIX */
-    {"open",     (void *)compat_open,     SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_I32, NM_ARG_U32), NM_SYM_FLAG_VARIADIC},
-    {"open64",   (void *)compat_open64,   SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_I32, NM_ARG_U32), NM_SYM_FLAG_VARIADIC},
-    {"openat",   (void *)compat_openat,   SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_I32, NM_ARG_U32), NM_SYM_FLAG_VARIADIC},
-    {"close",    (void *)compat_close,    SIG1(NM_RET_I32, NM_ARG_I32), 0},
-    {"read",     (void *)compat_read,     SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_U32), 0},
-    {"write",    (void *)compat_write,    SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_U32), 0},
-    {"lseek",    (void *)compat_lseek,    SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_I32), 0},
-    {"lseek64",  (void *)compat_lseek64,  SIG3(NM_RET_I64, NM_ARG_I32, NM_ARG_I64, NM_ARG_I32), 0},
-    {"unlink",   (void *)compat_unlink,   SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"symlink",  (void *)compat_symlink,  SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"readlink", (void *)compat_readlink, SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
-    {"access",   (void *)compat_access,   SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"fcntl",    (void *)compat_fcntl,    SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_U32), NM_SYM_FLAG_VARIADIC},
-    {"ioctl",    (void *)compat_ioctl,    SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_U32, NM_ARG_U32), NM_SYM_FLAG_VARIADIC},
-    {"dup",      (void *)compat_dup,      SIG1(NM_RET_I32, NM_ARG_I32), 0},
-    {"dup2",     (void *)compat_dup2,     SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_I32), 0},
-    {"dup3",     (void *)compat_dup3,     SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_I32), 0},
-    {"pipe",     (void *)compat_pipe,     SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"pipe2",    (void *)compat_pipe2,    SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"isatty",   (void *)compat_isatty,   SIG1(NM_RET_I32, NM_ARG_I32), 0},
-    {"getpid",   (void *)compat_getpid,   SIG0(NM_RET_I32), 0},
-    {"gettid",   (void *)compat_gettid,   SIG0(NM_RET_I32), 0},
-    {"getuid",   (void *)compat_getuid,   SIG0(NM_RET_U32), 0},
-    {"geteuid",  (void *)compat_geteuid,  SIG0(NM_RET_U32), 0},
-    {"getgid",   (void *)compat_getgid,   SIG0(NM_RET_U32), 0},
-    {"getegid",  (void *)compat_getegid,  SIG0(NM_RET_U32), 0},
-    {"sleep",    (void *)compat_sleep,    SIG1(NM_RET_U32, NM_ARG_U32), 0},
-    {"usleep",   (void *)compat_usleep,   SIG1(NM_RET_I32, NM_ARG_U32), 0},
-    {"mmap",     (void *)compat_mmap,     SIG6(NM_RET_PTR, NM_ARG_PTR, NM_ARG_U32, NM_ARG_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_I32), 0},
-    {"mmap64",   (void *)compat_mmap64,   SIG6(NM_RET_PTR, NM_ARG_PTR, NM_ARG_U32, NM_ARG_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_I64), 0},
-    {"munmap",   (void *)compat_munmap,   SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_U32), 0},
-    {"mprotect", (void *)compat_mprotect, SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_U32, NM_ARG_I32), 0},
-    {"uname",    (void *)compat_uname,    SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"sysconf",  (void *)compat_sysconf,  SIG1(NM_RET_I32, NM_ARG_I32), 0},
+    {"open",     (void *)(uintptr_t)compat_open,     SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_I32, NM_ARG_U32), NM_SYM_FLAG_VARIADIC},
+    {"open64",   (void *)(uintptr_t)compat_open64,   SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_I32, NM_ARG_U32), NM_SYM_FLAG_VARIADIC},
+    {"openat",   (void *)(uintptr_t)compat_openat,   SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_I32, NM_ARG_U32), NM_SYM_FLAG_VARIADIC},
+    {"close",    (void *)(uintptr_t)compat_close,    SIG1(NM_RET_I32, NM_ARG_I32), 0},
+    {"read",     (void *)(uintptr_t)compat_read,     SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_U32), 0},
+    {"write",    (void *)(uintptr_t)compat_write,    SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_U32), 0},
+    {"lseek",    (void *)(uintptr_t)compat_lseek,    SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_I32), 0},
+    {"lseek64",  (void *)(uintptr_t)compat_lseek64,  SIG3(NM_RET_I64, NM_ARG_I32, NM_ARG_I64, NM_ARG_I32), 0},
+    {"unlink",   (void *)(uintptr_t)compat_unlink,   SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"symlink",  (void *)(uintptr_t)compat_symlink,  SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"readlink", (void *)(uintptr_t)compat_readlink, SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32), 0},
+    {"access",   (void *)(uintptr_t)compat_access,   SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"fcntl",    (void *)(uintptr_t)compat_fcntl,    SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_U32), NM_SYM_FLAG_VARIADIC},
+    {"ioctl",    (void *)(uintptr_t)compat_ioctl,    SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_U32, NM_ARG_U32), NM_SYM_FLAG_VARIADIC},
+    {"dup",      (void *)(uintptr_t)compat_dup,      SIG1(NM_RET_I32, NM_ARG_I32), 0},
+    {"dup2",     (void *)(uintptr_t)compat_dup2,     SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_I32), 0},
+    {"dup3",     (void *)(uintptr_t)compat_dup3,     SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_I32), 0},
+    {"pipe",     (void *)(uintptr_t)compat_pipe,     SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"pipe2",    (void *)(uintptr_t)compat_pipe2,    SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"isatty",   (void *)(uintptr_t)compat_isatty,   SIG1(NM_RET_I32, NM_ARG_I32), 0},
+    {"getpid",   (void *)(uintptr_t)compat_getpid,   SIG0(NM_RET_I32), 0},
+    {"gettid",   (void *)(uintptr_t)compat_gettid,   SIG0(NM_RET_I32), 0},
+    {"getuid",   (void *)(uintptr_t)compat_getuid,   SIG0(NM_RET_U32), 0},
+    {"geteuid",  (void *)(uintptr_t)compat_geteuid,  SIG0(NM_RET_U32), 0},
+    {"getgid",   (void *)(uintptr_t)compat_getgid,   SIG0(NM_RET_U32), 0},
+    {"getegid",  (void *)(uintptr_t)compat_getegid,  SIG0(NM_RET_U32), 0},
+    {"sleep",    (void *)(uintptr_t)compat_sleep,    SIG1(NM_RET_U32, NM_ARG_U32), 0},
+    {"usleep",   (void *)(uintptr_t)compat_usleep,   SIG1(NM_RET_I32, NM_ARG_U32), 0},
+    {"mmap",     (void *)(uintptr_t)compat_mmap,     SIG6(NM_RET_PTR, NM_ARG_PTR, NM_ARG_U32, NM_ARG_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_I32), 0},
+    {"mmap64",   (void *)(uintptr_t)compat_mmap64,   SIG6(NM_RET_PTR, NM_ARG_PTR, NM_ARG_U32, NM_ARG_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_I64), 0},
+    {"munmap",   (void *)(uintptr_t)compat_munmap,   SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_U32), 0},
+    {"mprotect", (void *)(uintptr_t)compat_mprotect, SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_U32, NM_ARG_I32), 0},
+    {"uname",    (void *)(uintptr_t)compat_uname,    SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"sysconf",  (void *)(uintptr_t)compat_sysconf,  SIG1(NM_RET_I32, NM_ARG_I32), 0},
 
     /* Struct repacking */
-    {"stat",             (void *)compat_stat,             SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"lstat",            (void *)compat_lstat,            SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"fstat",            (void *)compat_fstat,            SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
-    {"fstatat",          (void *)compat_fstatat,          SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"stat64",           (void *)compat_stat64,           SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"lstat64",          (void *)compat_lstat64,          SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"fstat64",          (void *)compat_fstat64,          SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
-    {"fstatat64",        (void *)compat_fstatat64,        SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"__xstat",          (void *)compat___xstat,          SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"__lxstat",         (void *)compat___lxstat,         SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"__fxstat",         (void *)compat___fxstat,         SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR), 0},
-    {"__fxstatat",       (void *)compat___fxstatat,       SIG5(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"__xstat64",        (void *)compat___xstat64,        SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"__lxstat64",       (void *)compat___lxstat64,       SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"__fxstat64",       (void *)compat___fxstat64,       SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR), 0},
-    {"__fxstatat64",     (void *)compat___fxstatat64,     SIG5(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"__stat64_time64",  (void *)compat___stat64_time64,  SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"__lstat64_time64", (void *)compat___lstat64_time64, SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"__fstat64_time64", (void *)compat___fstat64_time64, SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
-    {"__fstatat64_time64",(void *)compat___fstatat64_time64,SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"clock_gettime",    (void *)compat_clock_gettime,    SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
-    {"__clock_gettime64",(void *)compat___clock_gettime64,SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
-    {"nanosleep",        (void *)compat_nanosleep,        SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"__nanosleep64",    (void *)compat___nanosleep64,    SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"clock_nanosleep",  (void *)compat_clock_nanosleep,  SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"__clock_nanosleep64",(void *)compat___clock_nanosleep64,SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"gettimeofday",     (void *)compat_gettimeofday,     SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"time",             (void *)compat_time,             SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"getrlimit",        (void *)compat_getrlimit,        SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
-    {"setrlimit",        (void *)compat_setrlimit,        SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
-    {"getrlimit64",      (void *)compat_getrlimit64,      SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
-    {"setrlimit64",      (void *)compat_setrlimit64,      SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
-    {"prlimit",          (void *)compat_prlimit,          SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"prlimit64",        (void *)compat_prlimit64,        SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"stat",             (void *)(uintptr_t)compat_stat,             SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"lstat",            (void *)(uintptr_t)compat_lstat,            SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"fstat",            (void *)(uintptr_t)compat_fstat,            SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
+    {"fstatat",          (void *)(uintptr_t)compat_fstatat,          SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"stat64",           (void *)(uintptr_t)compat_stat64,           SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"lstat64",          (void *)(uintptr_t)compat_lstat64,          SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"fstat64",          (void *)(uintptr_t)compat_fstat64,          SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
+    {"fstatat64",        (void *)(uintptr_t)compat_fstatat64,        SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"__xstat",          (void *)(uintptr_t)compat___xstat,          SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"__lxstat",         (void *)(uintptr_t)compat___lxstat,         SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"__fxstat",         (void *)(uintptr_t)compat___fxstat,         SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR), 0},
+    {"__fxstatat",       (void *)(uintptr_t)compat___fxstatat,       SIG5(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"__xstat64",        (void *)(uintptr_t)compat___xstat64,        SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"__lxstat64",       (void *)(uintptr_t)compat___lxstat64,       SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"__fxstat64",       (void *)(uintptr_t)compat___fxstat64,       SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR), 0},
+    {"__fxstatat64",     (void *)(uintptr_t)compat___fxstatat64,     SIG5(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"__stat64_time64",  (void *)(uintptr_t)compat___stat64_time64,  SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"__lstat64_time64", (void *)(uintptr_t)compat___lstat64_time64, SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"__fstat64_time64", (void *)(uintptr_t)compat___fstat64_time64, SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
+    {"__fstatat64_time64",(void *)(uintptr_t)compat___fstatat64_time64,SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"clock_gettime",    (void *)(uintptr_t)compat_clock_gettime,    SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
+    {"__clock_gettime64",(void *)(uintptr_t)compat___clock_gettime64,SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
+    {"nanosleep",        (void *)(uintptr_t)compat_nanosleep,        SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"__nanosleep64",    (void *)(uintptr_t)compat___nanosleep64,    SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"clock_nanosleep",  (void *)(uintptr_t)compat_clock_nanosleep,  SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"__clock_nanosleep64",(void *)(uintptr_t)compat___clock_nanosleep64,SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"timespec_get",     (void *)(uintptr_t)compat_timespec_get,     SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"gettimeofday",     (void *)(uintptr_t)compat_gettimeofday,     SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"time",             (void *)(uintptr_t)compat_time,             SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"getrlimit",        (void *)(uintptr_t)compat_getrlimit,        SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
+    {"setrlimit",        (void *)(uintptr_t)compat_setrlimit,        SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
+    {"getrlimit64",      (void *)(uintptr_t)compat_getrlimit64,      SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
+    {"setrlimit64",      (void *)(uintptr_t)compat_setrlimit64,      SIG2(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR), 0},
+    {"prlimit",          (void *)(uintptr_t)compat_prlimit,          SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"prlimit64",        (void *)(uintptr_t)compat_prlimit64,        SIG4(NM_RET_I32, NM_ARG_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
 
     /* Callbacks / pthreads / lifecycle */
-    {"qsort",                 (void *)compat_qsort,                 SIG4(NM_RET_VOID, NM_ARG_PTR, NM_ARG_U32, NM_ARG_U32, NM_ARG_U32), 0},
-    {"bsearch",               (void *)compat_bsearch,               SIG5(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32, NM_ARG_U32, NM_ARG_U32), 0},
-    {"pthread_create",        (void *)compat_pthread_create,        SIG4(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32, NM_ARG_U32), 0},
-    {"pthread_join",          (void *)compat_pthread_join,          SIG2(NM_RET_I32, NM_ARG_U32, NM_ARG_PTR), 0},
-    {"pthread_detach",        (void *)compat_pthread_detach,        SIG1(NM_RET_I32, NM_ARG_U32), 0},
-    {"pthread_self",          (void *)compat_pthread_self,          SIG0(NM_RET_U32), 0},
-    {"pthread_exit",          (void *)compat_pthread_exit,          SIG1(NM_RET_VOID, NM_ARG_PTR), 0},
-    {"pthread_mutex_init",    (void *)compat_pthread_mutex_init,    SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"pthread_mutex_destroy", (void *)compat_pthread_mutex_destroy, SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"pthread_mutex_lock",    (void *)compat_pthread_mutex_lock,    SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"pthread_mutex_trylock", (void *)compat_pthread_mutex_trylock, SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"pthread_mutex_unlock",  (void *)compat_pthread_mutex_unlock,  SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"pthread_cond_init",     (void *)compat_pthread_cond_init,     SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"pthread_cond_destroy",  (void *)compat_pthread_cond_destroy,  SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"pthread_cond_wait",     (void *)compat_pthread_cond_wait,     SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"pthread_cond_timedwait",(void *)compat_pthread_cond_timedwait,SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"pthread_cond_signal",   (void *)compat_pthread_cond_signal,   SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"pthread_cond_broadcast",(void *)compat_pthread_cond_broadcast,SIG1(NM_RET_I32, NM_ARG_PTR), 0},
-    {"atexit",                (void *)compat_atexit,                SIG1(NM_RET_I32, NM_ARG_U32), 0},
-    {"__cxa_atexit",          (void *)compat___cxa_atexit,          SIG3(NM_RET_I32, NM_ARG_U32, NM_ARG_U32, NM_ARG_U32), 0},
-    {"__cxa_finalize",        (void *)compat___cxa_finalize,        SIG1(NM_RET_VOID, NM_ARG_U32), 0},
-    {"signal",                (void *)compat_signal,                SIG2(NM_RET_U32, NM_ARG_I32, NM_ARG_U32), 0},
-    {"sigaction",             (void *)compat_sigaction,             SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"exit",                  (void *)compat_exit,                  SIG1(NM_RET_VOID, NM_ARG_I32), 0},
-    {"_exit",                 (void *)compat__exit,                 SIG1(NM_RET_VOID, NM_ARG_I32), 0},
-    {"abort",                 (void *)compat_abort,                 SIG0(NM_RET_VOID), 0},
-    {"__stack_chk_fail",      (void *)compat___stack_chk_fail,      SIG0(NM_RET_VOID), 0},
-    {"__errno_location",      (void *)compat___errno_location,      SIG0(NM_RET_PTR), 0},
-    {"__libc_start_main",     (void *)compat___libc_start_main,     SIG6(NM_RET_I32, NM_ARG_U32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_U32, NM_ARG_U32, NM_ARG_U32), 0},
+    {"qsort",                 (void *)(uintptr_t)compat_qsort,                 SIG4(NM_RET_VOID, NM_ARG_PTR, NM_ARG_U32, NM_ARG_U32, NM_ARG_U32), 0},
+    {"bsearch",               (void *)(uintptr_t)compat_bsearch,               SIG5(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32, NM_ARG_U32, NM_ARG_U32), 0},
+    {"pthread_create",        (void *)(uintptr_t)compat_pthread_create,        SIG4(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_U32, NM_ARG_U32), 0},
+    {"pthread_join",          (void *)(uintptr_t)compat_pthread_join,          SIG2(NM_RET_I32, NM_ARG_U32, NM_ARG_PTR), 0},
+    {"pthread_detach",        (void *)(uintptr_t)compat_pthread_detach,        SIG1(NM_RET_I32, NM_ARG_U32), 0},
+    {"pthread_self",          (void *)(uintptr_t)compat_pthread_self,          SIG0(NM_RET_U32), 0},
+    {"pthread_exit",          (void *)(uintptr_t)compat_pthread_exit,          SIG1(NM_RET_VOID, NM_ARG_PTR), 0},
+    {"pthread_mutex_init",    (void *)(uintptr_t)compat_pthread_mutex_init,    SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"pthread_mutex_destroy", (void *)(uintptr_t)compat_pthread_mutex_destroy, SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"pthread_mutex_lock",    (void *)(uintptr_t)compat_pthread_mutex_lock,    SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"pthread_mutex_trylock", (void *)(uintptr_t)compat_pthread_mutex_trylock, SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"pthread_mutex_unlock",  (void *)(uintptr_t)compat_pthread_mutex_unlock,  SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"pthread_cond_init",     (void *)(uintptr_t)compat_pthread_cond_init,     SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"pthread_cond_destroy",  (void *)(uintptr_t)compat_pthread_cond_destroy,  SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"pthread_cond_wait",     (void *)(uintptr_t)compat_pthread_cond_wait,     SIG2(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"pthread_cond_timedwait",(void *)(uintptr_t)compat_pthread_cond_timedwait,SIG3(NM_RET_I32, NM_ARG_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"pthread_cond_signal",   (void *)(uintptr_t)compat_pthread_cond_signal,   SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"pthread_cond_broadcast",(void *)(uintptr_t)compat_pthread_cond_broadcast,SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"atexit",                (void *)(uintptr_t)compat_atexit,                SIG1(NM_RET_I32, NM_ARG_U32), 0},
+    {"__cxa_atexit",          (void *)(uintptr_t)compat___cxa_atexit,          SIG3(NM_RET_I32, NM_ARG_U32, NM_ARG_U32, NM_ARG_U32), 0},
+    {"__cxa_finalize",        (void *)(uintptr_t)compat___cxa_finalize,        SIG1(NM_RET_VOID, NM_ARG_U32), 0},
+    {"signal",                (void *)(uintptr_t)compat_signal,                SIG2(NM_RET_U32, NM_ARG_I32, NM_ARG_U32), 0},
+    {"sigaction",             (void *)(uintptr_t)compat_sigaction,             SIG3(NM_RET_I32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"exit",                  (void *)(uintptr_t)compat_exit,                  SIG1(NM_RET_VOID, NM_ARG_I32), 0},
+    {"_exit",                 (void *)(uintptr_t)compat__exit,                 SIG1(NM_RET_VOID, NM_ARG_I32), 0},
+    {"quick_exit",            (void *)(uintptr_t)compat_quick_exit,            SIG1(NM_RET_VOID, NM_ARG_I32), 0},
+    {"abort",                 (void *)(uintptr_t)compat_abort,                 SIG0(NM_RET_VOID), 0},
+    {"__stack_chk_fail",      (void *)(uintptr_t)compat___stack_chk_fail,      SIG0(NM_RET_VOID), 0},
+    {"__errno_location",      (void *)(uintptr_t)compat___errno_location,      SIG0(NM_RET_PTR), 0},
+    {"__libc_start_main",     (void *)(uintptr_t)compat___libc_start_main,     SIG6(NM_RET_I32, NM_ARG_U32, NM_ARG_I32, NM_ARG_PTR, NM_ARG_U32, NM_ARG_U32, NM_ARG_U32), 0},
 
     /* dlfcn */
-    {"dlopen",  (void *)compat_dlopen,  SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
-    {"dlsym",   (void *)compat_dlsym,   SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
-    {"dlerror", (void *)compat_dlerror, SIG0(NM_RET_PTR), 0},
-    {"dlclose", (void *)compat_dlclose, SIG1(NM_RET_I32, NM_ARG_PTR), 0},
+    {"dlopen",  (void *)(uintptr_t)compat_dlopen,  SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_I32), 0},
+    {"dlsym",   (void *)(uintptr_t)compat_dlsym,   SIG2(NM_RET_PTR, NM_ARG_PTR, NM_ARG_PTR), 0},
+    {"dlerror", (void *)(uintptr_t)compat_dlerror, SIG0(NM_RET_PTR), 0},
+    {"dlclose", (void *)(uintptr_t)compat_dlclose, SIG1(NM_RET_I32, NM_ARG_PTR), 0},
 
     /* libm */
-    {"sqrt",  (void *)compat_sqrt,  SIG1(NM_RET_F64, NM_ARG_F64), 0},
-    {"sqrtf", (void *)compat_sqrtf, SIG1(NM_RET_F32, NM_ARG_F32), 0},
-    {"sin",   (void *)compat_sin,   SIG1(NM_RET_F64, NM_ARG_F64), 0},
-    {"sinf",  (void *)compat_sinf,  SIG1(NM_RET_F32, NM_ARG_F32), 0},
-    {"cos",   (void *)compat_cos,   SIG1(NM_RET_F64, NM_ARG_F64), 0},
-    {"cosf",  (void *)compat_cosf,  SIG1(NM_RET_F32, NM_ARG_F32), 0},
-    {"tan",   (void *)compat_tan,   SIG1(NM_RET_F64, NM_ARG_F64), 0},
-    {"tanf",  (void *)compat_tanf,  SIG1(NM_RET_F32, NM_ARG_F32), 0},
-    {"atan2", (void *)compat_atan2, SIG2(NM_RET_F64, NM_ARG_F64, NM_ARG_F64), 0},
-    {"pow",   (void *)compat_pow,   SIG2(NM_RET_F64, NM_ARG_F64, NM_ARG_F64), 0},
-    {"powf",  (void *)compat_powf,  SIG2(NM_RET_F32, NM_ARG_F32, NM_ARG_F32), 0},
-    {"exp",   (void *)compat_exp,   SIG1(NM_RET_F64, NM_ARG_F64), 0},
-    {"log",   (void *)compat_log,   SIG1(NM_RET_F64, NM_ARG_F64), 0},
-    {"log10", (void *)compat_log10, SIG1(NM_RET_F64, NM_ARG_F64), 0},
-    {"fabs",  (void *)compat_fabs,  SIG1(NM_RET_F64, NM_ARG_F64), 0},
-    {"fabsf", (void *)compat_fabsf, SIG1(NM_RET_F32, NM_ARG_F32), 0},
-    {"floor", (void *)compat_floor, SIG1(NM_RET_F64, NM_ARG_F64), 0},
-    {"ceil",  (void *)compat_ceil,  SIG1(NM_RET_F64, NM_ARG_F64), 0},
-    {"round", (void *)compat_round, SIG1(NM_RET_F64, NM_ARG_F64), 0},
+    {"sqrt",  (void *)(uintptr_t)compat_sqrt,  SIG1(NM_RET_F64, NM_ARG_F64), 0},
+    {"sqrtf", (void *)(uintptr_t)compat_sqrtf, SIG1(NM_RET_F32, NM_ARG_F32), 0},
+    {"sin",   (void *)(uintptr_t)compat_sin,   SIG1(NM_RET_F64, NM_ARG_F64), 0},
+    {"sinf",  (void *)(uintptr_t)compat_sinf,  SIG1(NM_RET_F32, NM_ARG_F32), 0},
+    {"cos",   (void *)(uintptr_t)compat_cos,   SIG1(NM_RET_F64, NM_ARG_F64), 0},
+    {"cosf",  (void *)(uintptr_t)compat_cosf,  SIG1(NM_RET_F32, NM_ARG_F32), 0},
+    {"tan",   (void *)(uintptr_t)compat_tan,   SIG1(NM_RET_F64, NM_ARG_F64), 0},
+    {"tanf",  (void *)(uintptr_t)compat_tanf,  SIG1(NM_RET_F32, NM_ARG_F32), 0},
+    {"atan2", (void *)(uintptr_t)compat_atan2, SIG2(NM_RET_F64, NM_ARG_F64, NM_ARG_F64), 0},
+    {"pow",   (void *)(uintptr_t)compat_pow,   SIG2(NM_RET_F64, NM_ARG_F64, NM_ARG_F64), 0},
+    {"powf",  (void *)(uintptr_t)compat_powf,  SIG2(NM_RET_F32, NM_ARG_F32, NM_ARG_F32), 0},
+    {"exp",   (void *)(uintptr_t)compat_exp,   SIG1(NM_RET_F64, NM_ARG_F64), 0},
+    {"log",   (void *)(uintptr_t)compat_log,   SIG1(NM_RET_F64, NM_ARG_F64), 0},
+    {"log10", (void *)(uintptr_t)compat_log10, SIG1(NM_RET_F64, NM_ARG_F64), 0},
+    {"fabs",  (void *)(uintptr_t)compat_fabs,  SIG1(NM_RET_F64, NM_ARG_F64), 0},
+    {"fabsf", (void *)(uintptr_t)compat_fabsf, SIG1(NM_RET_F32, NM_ARG_F32), 0},
+    {"floor", (void *)(uintptr_t)compat_floor, SIG1(NM_RET_F64, NM_ARG_F64), 0},
+    {"ceil",  (void *)(uintptr_t)compat_ceil,  SIG1(NM_RET_F64, NM_ARG_F64), 0},
+    {"round", (void *)(uintptr_t)compat_round, SIG1(NM_RET_F64, NM_ARG_F64), 0},
 };
 
 static pthread_once_t g_sym_sort_once = PTHREAD_ONCE_INIT;

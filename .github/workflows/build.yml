@@ -1,4 +1,4 @@
-name: Build compat (x32)
+name: Build & Verify compat (CachyOS + Ubuntu x32)
 
 on:
   push:
@@ -11,7 +11,47 @@ permissions:
   contents: read
 
 jobs:
-  build-x32:
+  cachyos-bleeding-edge:
+    runs-on: ubuntu-latest
+    container:
+      image: cachyos/cachyos-v3
+    steps:
+      - name: Checkout newminhh/compat
+        uses: actions/checkout@v4
+        with:
+          path: compat
+
+      - name: Pull shared headers from newminhh/common
+        uses: actions/checkout@v4
+        with:
+          repository: newminhh/common
+          path: common
+
+      - name: Install bleeding-edge Clang & GCC toolchains
+        run: |
+          pacman -Syu --noconfirm --needed clang gcc binutils make
+
+      - name: Validate C23 / C2y compilation matrix (Clang & GCC)
+        run: |
+          for cc in clang gcc; do
+            for std in gnu23 gnu2y; do
+              echo "=== Testing $cc with -std=$std ==="
+              make -C compat clean all CC="$cc" CSTD="$std"
+            done
+          done
+
+      - name: Run static analysis (make analyze)
+        run: |
+          make -C compat clean analyze CC="clang"
+          make -C compat clean analyze CC="gcc"
+
+      - name: Verify -mx32 integrated assembly
+        run: |
+          for cc in clang gcc; do
+            $cc -mx32 -fPIC -Icommon -c compat/compat_asm.S -o /dev/null
+          done
+
+  ubuntu-x32-link-fallback:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout newminhh/compat
@@ -25,17 +65,18 @@ jobs:
           repository: newminhh/common
           path: common
 
-      - name: Install x32 toolchain (gcc-multilib & binutils)
+      - name: Install x32 build toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-multilib binutils file
+          sudo apt-get install -y gcc-multilib libc6-dev-x32 binutils file
 
-      - name: Build libnewminhh_compat.so (x32)
+      - name: Build and verify libnewminhh_compat.so (x32)
         run: |
-          make -C compat CC="gcc -mx32" all
+          make -C compat CC="gcc -mx32" CSTD="gnu23" all
           file compat/libnewminhh_compat.so
-          readelf -h compat/libnewminhh_compat.so | grep -E "Class:|Machine:"
+          readelf -h compat/libnewminhh_compat.so | grep -E "Class:.*ELF32|Machine:.*Advanced Micro Devices X86-64"
           ! readelf -W -l compat/libnewminhh_compat.so | grep "GNU_STACK" | grep -q "RWE"
+          readelf -d compat/libnewminhh_compat.so | grep -E "BIND_NOW|FLAGS.*BIND_NOW"
 
       - name: Upload libnewminhh_compat.so artifact
         uses: actions/upload-artifact@v4

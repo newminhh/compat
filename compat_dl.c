@@ -31,13 +31,14 @@ typedef struct {
 #define NM_DL_HANDLE_MAGIC 0x4E4D444Cu /* "NMDL" */
 #define NM_DL_MAX_HANDLES  128
 
-static nm_dl_backend_t g_dl_backend = {0};
+static nm_dl_backend_t g_dl_backend = {};
 static pthread_mutex_t g_dl_lock = PTHREAD_MUTEX_INITIALIZER;
 static nm_dl_handle_t *g_handles[NM_DL_MAX_HANDLES];
 
-static __thread char tls_dlerror_buf[512];
-static __thread int tls_dlerror_pending = 0;
+static thread_local char tls_dlerror_buf[512];
+static thread_local int tls_dlerror_pending = 0;
 
+NM_PRINTF_FMT(1, 2)
 static void set_dlerror(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -47,18 +48,18 @@ static void set_dlerror(const char *fmt, ...) {
     NM_LOG_ERROR("dl", "%s", tls_dlerror_buf);
 }
 
-void newminhh_register_dl_backend(const nm_dl_backend_t *backend) {
+void newminhh_register_dl_backend(const nm_dl_backend_t *NM_NULLABLE_PTR backend) {
     pthread_mutex_lock(&g_dl_lock);
     if (backend) {
         g_dl_backend = *backend;
     } else {
-        memset(&g_dl_backend, 0, sizeof(g_dl_backend));
+        g_dl_backend = (nm_dl_backend_t){};
     }
     pthread_mutex_unlock(&g_dl_lock);
 }
 
 static const char *map_canonical_system_lib(const char *filename) {
-    if (!filename) return NULL;
+    if (!filename) return nullptr;
     const char *base = strrchr(filename, '/');
     base = base ? (base + 1) : filename;
 
@@ -83,7 +84,7 @@ static const char *map_canonical_system_lib(const char *filename) {
     if (strcmp(base, "libstdc++.so.6") == 0) {
         return "libstdc++.so.6";
     }
-    return NULL;
+    return nullptr;
 }
 
 static int is_file_elf32_i386(const char *path) {
@@ -103,7 +104,7 @@ static nm_dl_handle_t *register_handle(nm_dl_kind_t kind, void *real_handle,
     nm_dl_handle_t *h = (nm_dl_handle_t *)calloc(1, sizeof(*h));
     if (!h) {
         set_dlerror("newminhh_compat: out of memory allocating dl handle");
-        return NULL;
+        return nullptr;
     }
     h->magic = NM_DL_HANDLE_MAGIC;
     h->kind = kind;
@@ -116,7 +117,7 @@ static nm_dl_handle_t *register_handle(nm_dl_kind_t kind, void *real_handle,
     pthread_mutex_lock(&g_dl_lock);
     int placed = 0;
     for (int i = 0; i < NM_DL_MAX_HANDLES; i++) {
-        if (g_handles[i] == NULL) {
+        if (g_handles[i] == nullptr) {
             g_handles[i] = h;
             placed = 1;
             break;
@@ -126,13 +127,13 @@ static nm_dl_handle_t *register_handle(nm_dl_kind_t kind, void *real_handle,
     if (!placed) {
         free(h);
         set_dlerror("newminhh_compat: dl handle table full (%d)", NM_DL_MAX_HANDLES);
-        return NULL;
+        return nullptr;
     }
     return h;
 }
 
 static nm_dl_handle_t *validate_handle(void *raw) {
-    if (!raw) return NULL;
+    if (!raw) return nullptr;
     pthread_mutex_lock(&g_dl_lock);
     for (int i = 0; i < NM_DL_MAX_HANDLES; i++) {
         if (g_handles[i] == raw && g_handles[i]->magic == NM_DL_HANDLE_MAGIC) {
@@ -142,7 +143,7 @@ static nm_dl_handle_t *validate_handle(void *raw) {
         }
     }
     pthread_mutex_unlock(&g_dl_lock);
-    return NULL;
+    return nullptr;
 }
 
 void *compat_dlopen(const char *filename, int flags) {
@@ -152,12 +153,12 @@ void *compat_dlopen(const char *filename, int flags) {
         real_flags |= RTLD_NOW;
     }
 
-    if (filename == NULL) {
-        void *rh = dlopen(NULL, real_flags);
+    if (filename == nullptr) {
+        void *rh = dlopen(nullptr, real_flags);
         if (!rh) {
             const char *e = dlerror();
             set_dlerror("dlopen(NULL) failed: %s", e ? e : "unknown error");
-            return NULL;
+            return nullptr;
         }
         void *h = register_handle(NM_DL_PATCHED_X32, rh, "<main>", cdecl_mode);
         if (!h) {
@@ -168,7 +169,7 @@ void *compat_dlopen(const char *filename, int flags) {
 
     if (filename[0] == '\0') {
         set_dlerror("compat_dlopen: empty library filename");
-        return NULL;
+        return nullptr;
     }
 
     const char *canon = map_canonical_system_lib(filename);
@@ -178,7 +179,7 @@ void *compat_dlopen(const char *filename, int flags) {
             const char *e = dlerror();
             set_dlerror("compat_dlopen(%s -> %s) failed: %s",
                         filename, canon, e ? e : "unknown error");
-            return NULL;
+            return nullptr;
         }
         void *h = register_handle(NM_DL_NATIVE_WRAPPED, rh, canon, cdecl_mode);
         if (!h) {
@@ -199,13 +200,13 @@ void *compat_dlopen(const char *filename, int flags) {
         if (!backend.dlopen_fn) {
             set_dlerror("compat_dlopen: cannot load unpatched i386 shared object '%s' (no DBT backend registered)",
                         filename);
-            return NULL;
+            return nullptr;
         }
         void *gh = backend.dlopen_fn(filename, real_flags);
         if (!gh) {
             const char *e = backend.dlerror_fn ? backend.dlerror_fn() : "DBT dlopen failed";
             set_dlerror("compat_dlopen(%s) DBT failed: %s", filename, e ? e : "unknown");
-            return NULL;
+            return nullptr;
         }
         void *h = register_handle(NM_DL_GUEST_DBT, gh, filename, cdecl_mode);
         if (!h && backend.dlclose_fn) {
@@ -220,7 +221,7 @@ void *compat_dlopen(const char *filename, int flags) {
     if (!rh) {
         const char *e = dlerror();
         set_dlerror("compat_dlopen(%s) failed: %s", filename, e ? e : "cannot open shared object file");
-        return NULL;
+        return nullptr;
     }
     void *h = register_handle(NM_DL_PATCHED_X32, rh, filename, cdecl_mode);
     if (!h) {
@@ -234,11 +235,11 @@ static void *dlsym_internal(void *handle, const char *symbol, int force_cdecl) {
     if (!h) {
         set_dlerror("compat_dlsym: invalid or closed handle (%p) for symbol '%s'",
                     handle, symbol ? symbol : "(null)");
-        return NULL;
+        return nullptr;
     }
     if (!symbol || symbol[0] == '\0') {
         set_dlerror("compat_dlsym: NULL or empty symbol name (lib=%s)", h->name);
-        return NULL;
+        return nullptr;
     }
 
     if (h->kind == NM_DL_NATIVE_WRAPPED) {
@@ -246,13 +247,13 @@ static void *dlsym_internal(void *handle, const char *symbol, int force_cdecl) {
         if (newminhh_compat_lookup_wrapper(symbol, &entry) != NM_OK) {
             set_dlerror("compat_dlsym: unsupported native symbol '%s' in '%s' (no i386<->x32 ABI wrapper)",
                         symbol, h->name);
-            return NULL;
+            return nullptr;
         }
         if ((force_cdecl || h->cdecl_mode) && !(entry.flags & NM_SYM_FLAG_DATA)) {
             void *tramp = newminhh_alloc_out_trampoline_ex(entry.wrapper_fn, &entry.sig, entry.flags);
             if (!tramp) {
                 set_dlerror("compat_dlsym: failed to allocate outgoing bridge for '%s'", symbol);
-                return NULL;
+                return nullptr;
             }
             return tramp;
         }
@@ -265,14 +266,14 @@ static void *dlsym_internal(void *handle, const char *symbol, int force_cdecl) {
         pthread_mutex_unlock(&g_dl_lock);
         if (!backend.dlsym_fn) {
             set_dlerror("compat_dlsym: DBT backend unavailable for '%s'", symbol);
-            return NULL;
+            return nullptr;
         }
         void *sym = backend.dlsym_fn(h->real_handle, symbol);
         if (!sym) {
             const char *e = backend.dlerror_fn ? backend.dlerror_fn() : "symbol not found";
             set_dlerror("compat_dlsym(%s, %s) failed: %s",
                         h->name, symbol, e ? e : "undefined symbol");
-            return NULL;
+            return nullptr;
         }
         return sym;
     }
@@ -284,7 +285,7 @@ static void *dlsym_internal(void *handle, const char *symbol, int force_cdecl) {
     if (e || !sym) {
         set_dlerror("compat_dlsym(%s, %s) failed: %s",
                     h->name, symbol, e ? e : "undefined symbol");
-        return NULL;
+        return nullptr;
     }
     return sym;
 }
@@ -299,7 +300,7 @@ void *compat_dlsym_cdecl(void *handle, const char *symbol) {
 
 const char *compat_dlerror(void) {
     if (!tls_dlerror_pending) {
-        return NULL;
+        return nullptr;
     }
     tls_dlerror_pending = 0;
     return tls_dlerror_buf;
@@ -311,13 +312,13 @@ int compat_dlclose(void *handle) {
         return -1;
     }
     pthread_mutex_lock(&g_dl_lock);
-    nm_dl_handle_t *h = NULL;
+    nm_dl_handle_t *h = nullptr;
     int slot = -1;
     for (int i = 0; i < NM_DL_MAX_HANDLES; i++) {
         if (g_handles[i] == handle && g_handles[i]->magic == NM_DL_HANDLE_MAGIC) {
             h = g_handles[i];
             slot = i;
-            g_handles[i] = NULL;
+            g_handles[i] = nullptr;
             break;
         }
     }

@@ -76,13 +76,13 @@
 #define I386_NR_clock_nanosleep_t64 407
 #define I386_NR_futex_time64        422
 
-static nm_brk_hook_t g_brk_hook = NULL;
+static nm_brk_hook_t NM_NULLABLE_PTR g_brk_hook = nullptr;
 
-static __thread uint32_t tls_bases[3] = {0, 0, 0};
-static __thread uint8_t  tls_used[3] = {0, 0, 0};
-static __thread uint32_t tls_gs_base = 0;
+static thread_local uint32_t tls_bases[3] = {};
+static thread_local uint8_t  tls_used[3] = {};
+static thread_local uint32_t tls_gs_base = 0;
 
-void newminhh_register_brk_hook(nm_brk_hook_t brk_hook) {
+void newminhh_register_brk_hook(nm_brk_hook_t NM_NULLABLE_PTR brk_hook) {
     g_brk_hook = brk_hook;
 }
 
@@ -557,7 +557,7 @@ static int32_t dispatch_syscall_internal(uint32_t nr, uint32_t a1, uint32_t a2,
 int32_t newminhh_compat_syscall(uint32_t nr, uint32_t a1, uint32_t a2,
                                 uint32_t a3, uint32_t a4, uint32_t a5,
                                 uint32_t a6) {
-    return dispatch_syscall_internal(nr, a1, a2, a3, a4, a5, a6, NULL);
+    return dispatch_syscall_internal(nr, a1, a2, a3, a4, a5, a6, nullptr);
 }
 
 int32_t newminhh_compat_syscall_cpu(newminhh_cpu_t *cpu) {
